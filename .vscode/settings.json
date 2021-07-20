@@ -1,0 +1,11 @@
+{
+  "editor.formatOnSave": true,
+  "editor.formatOnPaste": true,
+  "[rust]": {
+    "editor.formatOnSave": false,
+    "files.insertFinalNewline": false,
+    "files.trimFinalNewlines": false,
+    "files.trimTrailingWhitespace": false
+  },
+  "cSpell.words": ["Repr", "hasher", "merkle", "merklize"]
+}

@@ -1,0 +1,16 @@
+[package]
+name = "stark-pure-rust"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+blake2 = "0.9.1"
+ff = { version = "0.10", features = ["derive"] }
+group = "0.10"
+pairing_ce = "0.24.2"
+num-bigint = "0.2.3"
+subtle = "2.4.0"
+byteorder = "1"
+bitvec = "0.22"
+rand_core = "0.6"
+num = "0.4"
