@@ -367,6 +367,7 @@ dependencies = [
  "group",
  "num",
  "num-bigint 0.2.6",
+ "num-traits",
  "pairing_ce",
  "rand_core 0.6.3",
  "subtle",

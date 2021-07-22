@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use blake2::{Blake2s, Digest};
 use ff::PrimeField;
 
@@ -31,7 +32,7 @@ pub fn get_pseudorandom_indices(
   modulus: i32,
   count: usize,
   exclude_multiples_of: i32,
-) -> Vec<i32> {
+) -> Vec<usize> {
   assert!(modulus < 2i32.pow(24));
   let mut data = seed.clone();
   while data.len() < 4 * count {
@@ -42,13 +43,15 @@ pub fn get_pseudorandom_indices(
     (0..(count * 4))
       .step_by(4)
       .map(|i| i32::from_str_radix(&data[i..(i + 4)], 16).unwrap() % modulus)
+      .map(|i| i.try_into().unwrap())
       .collect()
   } else {
     let real_modulus = modulus * (exclude_multiples_of - 1) / exclude_multiples_of;
     (0..(count * 4))
       .step_by(4)
       .map(|i| i32::from_str_radix(&data[i..(i + 4)], 16).unwrap() % real_modulus)
-      .map(|x| x + 1 + x / (exclude_multiples_of - 1))
+      .map(|i| i + 1 + i / (exclude_multiples_of - 1))
+      .map(|i| i.try_into().unwrap())
       .collect()
   }
 }

@@ -1,10 +1,11 @@
+use std::convert::TryInto;
+use ff::PrimeField;
 use crate::merkle_tree::{
     merklize as _merklize, mk_branch as _mk_branch, mk_multi_branch as _mk_multi_branch,
     verify_branch as _verify_branch, verify_multi_branch as _verify_multi_branch,
 };
-use std::convert::TryInto;
 
-pub fn permute4_values(values: &[i32]) -> Vec<i32> {
+pub fn permute4_values<T: PrimeField>(values: &[T]) -> Vec<T> {
     let mut o = vec![];
     let ld4 = values.len() / 4;
     for i in 0..ld4 {
@@ -28,11 +29,11 @@ pub fn permute4_indices(xs: &[usize], value: usize) -> Vec<usize> {
     xs.iter().map(|x| x / ld4 + (x % ld4) * 4).collect()
 }
 
-pub fn merklize(L: &[i32]) -> Vec<String> {
+pub fn merklize<T: PrimeField>(values: &[T]) -> Vec<String> {
     _merklize(
-        permute4_values(L)
+        permute4_values(values)
             .iter()
-            .map(|x| format!("{:x}", x))
+            .map(|x| format!("{}", x.to_repr()))
             .collect(),
     )
 }

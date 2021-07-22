@@ -1,23 +1,23 @@
+use ff::PrimeField;
+use std::convert::TryInto;
 // use crate::ff_utils::Fp;
 use crate::fft::expand_root_of_unity;
 use crate::permuted_tree::{merklize, mk_multi_branch, verify_multi_branch};
 use crate::poly_utils::{eval_poly_at, eval_quartic, lagrange_interp, multi_interp_4};
 use crate::utils::get_pseudorandom_indices;
-use ff::PrimeField;
-use std::convert::TryInto;
 
-pub struct FriProof<T: PrimeField> {
+pub struct FriProof {
   root2: String,
   column_branches: Vec<Vec<String>>,
   poly_branches: Vec<Vec<String>>,
 }
 
 pub fn prove_low_degree<T: PrimeField>(
-  values: &[i32],
+  values: &[T],
   root_of_unity: T,
   max_deg_plus_1: i32,
   exclude_multiples_of: i32,
-) -> Vec<FriProof<T>> {
+) -> Vec<FriProof> {
   println!(
     "Proving %{} values are degree <= %{}",
     values.len(),
@@ -28,7 +28,10 @@ pub fn prove_low_degree<T: PrimeField>(
   // use the polynomial directly as a proof
   if max_deg_plus_1 <= 16 {
     println!("Produced FRI proof");
-    return vec![values.iter().map(|x| format!("{:08x}", x)).collect()];
+    return vec![values
+      .iter()
+      .map(|x| format!("{:?}", x.to_repr()))
+      .collect()];
   }
 
   // Calculate the set of x coordinates
@@ -40,18 +43,36 @@ pub fn prove_low_degree<T: PrimeField>(
   let m = merklize(values);
 
   // Select a pseudo-random x coordinate
-  let special_x = i32::from_str_radix(&m[m.len() - 1], 16).unwrap() % modulus;
+  let special_x = T::from_str(&m[m.len() - 1]).unwrap();
 
   // Calculate the "column" at that x coordinate
   // (see https://vitalik.ca/general/2017/11/22/starks_part_2.html)
   // We calculate the column by Lagrange-interpolating each row, and not
   // directly from the polynomial, as this is more efficient
   let quarter_len = xs.len() / 4;
-  let x_polys = multi_interp_4(
-    (0..quarter_len).map(|i| (0..4).map(|j| xs[i + quarter_len * j]).collect()),
-    (0..quarter_len).map(|i| (0..4).map(|j| values[i + quarter_len * j]).collect()),
-  );
-  let column: Vec<i32> = (0..x_polys).map(|p| eval_quartic(p, special_x)).collect();
+  let xsets: Vec<[T; 4]> = (0..quarter_len)
+    .map(|i| {
+      let o = [T::zero(); 4];
+      for j in 0..4 {
+        o[j] = xs[i + quarter_len * j];
+      }
+      o
+    })
+    .collect();
+  let ysets: Vec<[T; 4]> = (0..quarter_len)
+    .map(|i| {
+      let o = [T::zero(); 4];
+      for j in 0..4 {
+        o[j] = values[i + quarter_len * j];
+      }
+      o
+    })
+    .collect();
+  let x_polys = multi_interp_4(&xsets, &ysets);
+  let column: Vec<T> = x_polys
+    .iter()
+    .map(|p| eval_quartic(*p, special_x))
+    .collect();
   let m2 = merklize(&column);
 
   // Pseudo-randomly select y indices to sample
@@ -113,7 +134,7 @@ fn verify_low_degree_proof<T: PrimeField>(
   ];
 
   // Verify the recursive components of the proof
-  for prf in proof.to_vec().drain(..(proof.len() - 1)) {
+  for prf in proof[0..(proof.len() - 1)] {
     let root2 = prf.root2;
     let column_branches = prf.column_branches;
     let poly_branches = prf.poly_branches;
@@ -125,7 +146,7 @@ fn verify_low_degree_proof<T: PrimeField>(
     // Calculate the pseudo-randomly sampled y indices
     let ys = get_pseudorandom_indices(
       root2,
-      roudeg / 4,
+      (roudeg / 4).try_into().unwrap(),
       40,
       exclude_multiples_of = exclude_multiples_of,
     );
@@ -182,7 +203,7 @@ fn verify_low_degree_proof<T: PrimeField>(
   let data = [
     T::from_str(proof[proof.len() - 1].root2),
     T::from_str(proof[proof.len() - 1].column_branches),
-    T::from_str(proof[proof.len() - 1].poly_branches)
+    T::from_str(proof[proof.len() - 1].poly_branches),
   ];
   println!("Verifying degree <= {:?}", maxdeg_plus_1);
   assert!(maxdeg_plus_1 <= 16);
@@ -194,16 +215,15 @@ fn verify_low_degree_proof<T: PrimeField>(
   // Check the degree of the data
   let powers = expand_root_of_unity(root_of_unity);
   let mut pts: Vec<usize> = if exclude_multiples_of != 0 {
-    (0..data.len()).filter(|x| *x % exclude_multiples_of.try_into().unwrap() != 0).collect()
+    (0..data.len())
+      .filter(|x| *x % exclude_multiples_of.try_into().unwrap() != 0)
+      .collect()
   } else {
     (0..data.len()).collect()
   };
 
   let rest = pts.split_off(maxdeg_plus_1.try_into().unwrap());
-  let poly = lagrange_interp(
-    pts.iter().map(|x| powers[*x]),
-    pts.iter().map(|x| data[*x]),
-  );
+  let poly = lagrange_interp(pts.iter().map(|x| powers[*x]), pts.iter().map(|x| data[*x]));
   for x in rest {
     assert!(eval_poly_at(poly, powers[x]) == data[x]);
   }

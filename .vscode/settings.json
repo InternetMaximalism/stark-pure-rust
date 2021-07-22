@@ -7,5 +7,13 @@
     "files.trimFinalNewlines": false,
     "files.trimTrailingWhitespace": false
   },
-  "cSpell.words": ["Repr", "hasher", "merkle", "merklize"]
+  "cSpell.words": [
+    "Repr",
+    "coeff",
+    "eval",
+    "hasher",
+    "merkle",
+    "merklize",
+    "polyn"
+  ]
 }

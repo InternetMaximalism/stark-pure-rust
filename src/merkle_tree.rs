@@ -1,6 +1,6 @@
-use crate::ff::PrimeField;
-use crate::utils::{blake, is_a_power_of_2};
+use ff::PrimeField;
 use std::convert::TryInto;
+use crate::utils::{blake, is_a_power_of_2};
 
 pub fn merklize(nodes: Vec<String>) -> Vec<String> {
   // let mut nodes: Vec<String> = leaves;
@@ -134,12 +134,15 @@ fn test_multi_proof() {
   let merkle_root = get_root(&merkle_tree);
   let proofs = mk_multi_branch(&merkle_tree, &indices);
   assert_eq!(
-    proofs,[
+    proofs,
     [
-      &leaves[2],
-      &leaves[3],
-      "bf873d9fd14913779d20856a11379a595536cfa8f447c6cd36d6e68c827e0547"
-    ],[&leaves[1], &leaves[0], ""]]
+      [
+        &leaves[2],
+        &leaves[3],
+        "bf873d9fd14913779d20856a11379a595536cfa8f447c6cd36d6e68c827e0547"
+      ],
+      [&leaves[1], &leaves[0], ""]
+    ]
   );
 
   let res = verify_multi_branch(&merkle_root, &indices, proofs);
@@ -148,9 +151,9 @@ fn test_multi_proof() {
 }
 
 fn bin_length(proof: Vec<Vec<String>>) -> usize {
-  proof
-    .iter()
-    .map(|xs| xs.iter().fold(0, |acc, x| acc + x.len()) + xs.len() / 8)
-    .fold(0, |acc, val| acc + val)
-    + proof.len() * 2
+  proof.len() * 2
+    + proof
+      .iter()
+      .map(|xs| xs.iter().fold(0, |acc, x| acc + x.len()) + xs.len() / 8)
+      .fold(0, |acc, val| acc + val)
 }
