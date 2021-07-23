@@ -15,3 +15,4 @@ bitvec = "0.22"
 rand_core = "0.6"
 num = "0.4"
 num-traits = { version = "0.2.11", features = ["i128"], default-features = false }
+hex = "0.4.3"

@@ -1,4 +1,3 @@
-use ff::PrimeField;
 use std::convert::TryInto;
 use crate::utils::{blake, is_a_power_of_2};
 
@@ -19,10 +18,6 @@ pub fn merklize(nodes: Vec<String>) -> Vec<String> {
 
 #[test]
 fn test_merklize() {
-  use crate::fp::Fp;
-  let three = Fp::from(3);
-  let three_repr = three.to_repr();
-  println!("{:?}", three_repr);
   let leaves = vec![i32::max_value(), i32::min_value(), 3, 0];
   let merkle_tree = merklize(leaves.iter().map(|x| format!("{:08x}", x)).collect());
   assert_eq!(

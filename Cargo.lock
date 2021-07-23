@@ -365,6 +365,7 @@ dependencies = [
  "byteorder",
  "ff",
  "group",
+ "hex",
  "num",
  "num-bigint 0.2.6",
  "num-traits",

@@ -1,19 +1,20 @@
 use std::convert::TryInto;
 use ff::PrimeField;
+use hex::ToHex;
 use crate::merkle_tree::{
     merklize as _merklize, mk_branch as _mk_branch, mk_multi_branch as _mk_multi_branch,
     verify_branch as _verify_branch, verify_multi_branch as _verify_multi_branch,
 };
 
-pub fn permute4_values<T: PrimeField>(values: &[T]) -> Vec<T> {
+pub fn permute4_values(values: &[String]) -> Vec<String> {
     let mut o = vec![];
     let ld4 = values.len() / 4;
     for i in 0..ld4 {
         o.extend([
-            values[i],
-            values[i + ld4],
-            values[i + ld4 * 2],
-            values[i + ld4 * 3],
+            values[i].clone(),
+            values[i + ld4].clone(),
+            values[i + ld4 * 2].clone(),
+            values[i + ld4 * 3].clone(),
         ]);
     }
     o
@@ -29,13 +30,8 @@ pub fn permute4_indices(xs: &[usize], value: usize) -> Vec<usize> {
     xs.iter().map(|x| x / ld4 + (x % ld4) * 4).collect()
 }
 
-pub fn merklize<T: PrimeField>(values: &[T]) -> Vec<String> {
-    _merklize(
-        permute4_values(values)
-            .iter()
-            .map(|x| format!("{}", x.to_repr()))
-            .collect(),
-    )
+pub fn merklize<T: PrimeField + ToHex>(values: &[String]) -> Vec<String> {
+    _merklize(permute4_values(values))
 }
 
 pub fn mk_branch(tree: &[String], index: usize) -> Vec<String> {

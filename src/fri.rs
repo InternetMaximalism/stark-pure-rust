@@ -40,7 +40,7 @@ pub fn prove_low_degree<T: PrimeField>(
 
   // Put the values into a Merkle tree. This is the root that the
   // proof will be checked against
-  let m = merklize(values);
+  let m = merklize(values.map(|x| x.encode_hex()).collect());
 
   // Select a pseudo-random x coordinate
   let special_x = T::from_str(&m[m.len() - 1]).unwrap();
