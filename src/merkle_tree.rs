@@ -72,7 +72,7 @@ pub fn verify_branch(root: &String, index: usize, proof: &[String]) -> String {
     v = blake(&message.as_ref());
     index_clone /= 2;
   }
-  assert!(v.to_string() == *root);
+  assert_eq!(v.to_string(), *root);
   proof[0].clone()
 }
 

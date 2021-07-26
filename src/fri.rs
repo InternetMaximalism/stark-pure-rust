@@ -55,9 +55,10 @@ fn prove_low_degree_rec<T: PrimeField + ToHex>(
   // use the polynomial directly as a proof
   if max_deg_plus_1 <= 16 {
     println!("Produced FRI proof");
-    return vec![FriProof::Last {
+    acc.push(FriProof::Last {
       last: values.iter().map(|x| x.encode_hex()).collect(),
-    }];
+    });
+    return acc;
   }
 
   // Calculate the set of x coordinates
@@ -183,7 +184,6 @@ pub fn verify_low_degree_proof_rec<T: PrimeField>(
   ];
 
   // Verify the recursive components of the proof
-  // println!("proof length {:?}", proof.len());
   for prf in proof.iter().take(proof.len() - 1) {
     let (root2, column_branches, poly_branches) = match prf {
       FriProof::Middle {
@@ -198,7 +198,7 @@ pub fn verify_low_degree_proof_rec<T: PrimeField>(
     println!("Verifying degree <= {:?}", max_deg_plus_1);
 
     // Calculate the pseudo-random x coordinate
-    let special_x = T::from_str(&merkle_root).unwrap();
+    let special_x = T::from_str(&parse_hex_to_decimal(merkle_root.clone())).unwrap();
 
     // Calculate the pseudo-randomly sampled y indices
     let ys = get_pseudorandom_indices(
@@ -238,10 +238,10 @@ pub fn verify_low_degree_proof_rec<T: PrimeField>(
       // The values from the original polynomial
       let mut row = [T::zero(); 4];
       for j in 0..4 {
-        row[j] = T::from_str(&poly_values[i * 4 + j]).unwrap();
+        row[j] = T::from_str(&parse_hex_to_decimal(poly_values[i * 4 + j].clone())).unwrap();
       }
       rows.push(row);
-      column_vals.push(T::from_str(&column_values[i]).unwrap());
+      column_vals.push(T::from_str(&parse_hex_to_decimal(column_values[i].clone())).unwrap());
     }
 
     // Verify for each selected y coordinate that the four points from the
@@ -289,7 +289,7 @@ pub fn verify_low_degree_proof_rec<T: PrimeField>(
     (0..last_data.len()).collect()
   };
 
-  let decoded_last_data: Vec<T> = last_data.iter().map(|x| T::from_str(x).unwrap()).collect();
+  let decoded_last_data: Vec<T> = last_data.iter().map(|x| T::from_str(&parse_hex_to_decimal(x.clone())).unwrap()).collect();
   let rest = pts.split_off(max_deg_plus_1.try_into().unwrap());
   let xs: Vec<T> = pts.iter().map(|x| powers[*x]).collect();
   let ys: Vec<T> = pts.iter().map(|x| decoded_last_data[*x]).collect();
