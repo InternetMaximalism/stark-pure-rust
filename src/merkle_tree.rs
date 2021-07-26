@@ -1,5 +1,5 @@
-use std::convert::TryInto;
 use crate::utils::{blake, is_a_power_of_2};
+use std::convert::TryInto;
 
 pub fn merklize(nodes: Vec<String>) -> Vec<String> {
   // let mut nodes: Vec<String> = leaves;
@@ -55,7 +55,7 @@ pub fn mk_branch(tree: &[String], index: usize) -> Vec<String> {
   o
 }
 
-pub fn verify_branch(root: &String, index: usize, proof: Vec<String>) -> String {
+pub fn verify_branch(root: &String, index: usize, proof: &[String]) -> String {
   let proof_size: usize = 2u32
     .pow(proof.len().try_into().unwrap())
     .try_into()
@@ -92,7 +92,7 @@ fn test_single_proof() {
     ]
   );
 
-  let res = verify_branch(&merkle_root, index, proof);
+  let res = verify_branch(&merkle_root, index, &proof);
   assert_eq!(res, format!("{:08x}", leaves[index]));
 }
 
@@ -109,14 +109,12 @@ pub fn mk_multi_branch(tree: &[String], indices: &[usize]) -> Vec<Vec<String>> {
 pub fn verify_multi_branch(
   root: &String,
   indices: &[usize],
-  proofs: Vec<Vec<String>>,
+  proofs: &[Vec<String>],
 ) -> Vec<String> {
-  (0..indices.len())
-    .map(|key| {
-      let i = indices[key];
-      let b = proofs[key].clone();
-      verify_branch(root, i, b)
-    })
+  indices
+    .iter()
+    .zip(proofs)
+    .map(|(i, b)| verify_branch(root, *i, b))
     .collect()
 }
 
@@ -125,27 +123,32 @@ fn test_multi_proof() {
   let indices = [1, 2];
   let inputs = vec![i32::max_value(), i32::min_value(), 3, 0];
   let leaves: Vec<String> = inputs.iter().map(|x| format!("{:08x}", x)).collect();
-  let merkle_tree = merklize(leaves);
+  let merkle_tree = merklize(leaves.clone());
   let merkle_root = get_root(&merkle_tree);
   let proofs = mk_multi_branch(&merkle_tree, &indices);
+  let cloned_leaves: Vec<String> = leaves.clone();
   assert_eq!(
     proofs,
     [
       [
-        &leaves[2],
-        &leaves[3],
+        &cloned_leaves[1],
+        &cloned_leaves[0],
+        "9d5e04de8033aaeb39a13b8f7f8b435844b3abfb3beffaa1f6eaf8e5df35e87a"
+      ],
+      [
+        &cloned_leaves[2],
+        &cloned_leaves[3],
         "bf873d9fd14913779d20856a11379a595536cfa8f447c6cd36d6e68c827e0547"
       ],
-      [&leaves[1], &leaves[0], ""]
     ]
   );
 
-  let res = verify_multi_branch(&merkle_root, &indices, proofs);
-  let answer: Vec<String> = indices.iter().map(|index| leaves[*index]).collect();
+  let res = verify_multi_branch(&merkle_root, &indices, &proofs);
+  let answer: Vec<String> = indices.iter().map(|index| leaves[*index].clone()).collect();
   assert_eq!(res, answer);
 }
 
-fn bin_length(proof: Vec<Vec<String>>) -> usize {
+pub fn bin_length(proof: &[Vec<String>]) -> usize {
   proof.len() * 2
     + proof
       .iter()

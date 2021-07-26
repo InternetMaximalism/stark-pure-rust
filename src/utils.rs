@@ -1,6 +1,6 @@
-use std::convert::TryInto;
 use blake2::{Blake2s, Digest};
-use ff::PrimeField;
+use std::cmp::min;
+use std::convert::TryInto;
 
 pub fn blake(message: &[u8]) -> String {
   let mut hasher = Blake2s::new();
@@ -17,7 +17,7 @@ pub fn test_blake() {
   assert_eq!(res, answer.to_string());
 }
 
-pub fn is_a_power_of_2(x: i32) -> bool {
+pub fn is_a_power_of_2(x: usize) -> bool {
   if x == 1 {
     true
   } else if x % 2 == 1 {
@@ -65,4 +65,38 @@ fn test_get_pseudorandom_indices() {
   let res = get_pseudorandom_indices(blake(b"hello another world"), 7, 20, 0);
   let answer = [6, 5, 4, 6, 6, 4, 6, 6, 3, 5, 0, 1, 4, 3, 3, 3, 5, 1, 1, 5];
   assert_eq!(res, answer);
+}
+
+fn get_power_sequence(x: u64, steps: usize) -> Vec<u64> {
+  let mut powers = vec![1u64];
+  for _ in 1..steps {
+    powers.push(powers.last().unwrap() * x);
+  }
+  powers
+}
+
+pub fn parse_bytes_to_u64_vec(mut xs: &[u8]) -> Vec<u64> {
+  let mut output = vec![];
+  while xs.len() > 0 {
+    let mut y = 0u64;
+    let sub_xs: Vec<u64> = xs
+      .iter()
+      .take(8)
+      .map(|x| (*x).try_into().unwrap())
+      .collect();
+    for (power, x) in get_power_sequence(256, 8).iter().zip(sub_xs) {
+      y += power * x;
+    }
+    output.push(y);
+    xs = &xs[min(8, xs.len())..];
+  }
+  output
+}
+
+#[test]
+fn test_parse_bytes_to_u64_vec() {
+  let xs = &[1u8, 1, 0, 0, 0, 0, 0, 0, 255, 0];
+  let res = parse_bytes_to_u64_vec(xs);
+  let answer = &[257u64, 255u64];
+  assert_eq!(&res, answer);
 }

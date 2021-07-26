@@ -37,9 +37,10 @@ use std::collections::HashMap;
 
 pub fn multi_inv<T: PrimeField>(values: &[T]) -> Vec<T> {
   let mut partials = vec![T::one()];
+  debug_assert!(partials.len() > 0);
   for i in 0..values.len() {
     partials.push(
-      partials[partials.len() - 1]
+      *partials.last().unwrap()
         * (if values[i] != T::zero() {
           values[i]
         } else {
@@ -49,22 +50,44 @@ pub fn multi_inv<T: PrimeField>(values: &[T]) -> Vec<T> {
   }
 
   let mut inv = partials[partials.len() - 1].invert().unwrap();
+
   let mut outputs = vec![T::zero(); values.len()];
-  for i in values.len()..0 {
-    outputs[i - 1] = if values[i - 1] != T::zero() {
-      partials[i - 1] * inv
+  for i in (0..values.len()).rev() {
+    outputs[i] = if values[i] != T::zero() {
+      partials[i] * inv
     } else {
       T::zero()
     };
 
-    inv *= if values[i - 1] != T::zero() {
-      values[i - 1]
+    inv *= if values[i] != T::zero() {
+      values[i]
     } else {
       T::one()
     };
   }
 
   outputs
+}
+
+#[test]
+fn test_multi_inv() {
+  use crate::f7::F7;
+
+  let values: Vec<F7> = [1u64, 3, 2, 6, 4, 5].iter().map(|x| F7::from(*x)).collect();
+  let res = multi_inv(&values);
+  let answer: Vec<F7> = [1u64, 5, 4, 6, 2, 3].iter().map(|x| F7::from(*x)).collect();
+  assert_eq!(res, answer);
+
+  let values: Vec<F7> = [0u64, 1, 5, 4, 0, 6, 2, 3, 0]
+    .iter()
+    .map(|x| F7::from(*x))
+    .collect();
+  let res = multi_inv(&values);
+  let answer: Vec<F7> = [0u64, 1, 3, 2, 0, 6, 4, 5, 0]
+    .iter()
+    .map(|x| F7::from(*x))
+    .collect();
+  assert_eq!(res, answer);
 }
 
 pub fn eval_poly_at<T: PrimeField>(polyn: &[T], x: T) -> T {
@@ -78,12 +101,39 @@ pub fn eval_poly_at<T: PrimeField>(polyn: &[T], x: T) -> T {
   y
 }
 
+#[test]
+fn test_eval_poly_at() {
+  use crate::f7::F7;
+
+  // p(x) = 1 + 2x + x^3
+  let p: Vec<F7> = [1u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  let x = F7::from(2u64);
+  // p(2) = 1 + 2*2 + 2^3 = 6
+  let y = eval_poly_at(&p, x);
+  let answer = F7::from(6u64);
+  assert_eq!(y, answer);
+}
+
 pub fn add_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
   (0..max(a.len(), b.len()))
     .map(
       |i| if i < a.len() { a[i] } else { T::zero() } + if i < b.len() { b[i] } else { T::zero() },
     )
     .collect()
+}
+
+#[test]
+fn test_add_polys() {
+  use crate::f7::F7;
+
+  // p1(x) = 4 + 2x + x^3
+  let p1: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  // p2(x) = 6 + x + 2x^2
+  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  // p3(x) = 3 + 3x + 2x^2 + x^3
+  let p3 = add_polys(&p1, &p2);
+  let answer: Vec<F7> = [3u64, 3, 2, 1].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(p3, answer);
 }
 
 pub fn sub_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
@@ -94,8 +144,35 @@ pub fn sub_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
     .collect()
 }
 
+#[test]
+fn test_sub_polys() {
+  use crate::f7::F7;
+
+  // p1(x) = 4 + 2x + x^3
+  let p1: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  // p2(x) = 6 + x + 2x^2
+  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  // p3(x) = 5 + x + 5x^2 + x^3
+  let p3 = sub_polys(&p1, &p2);
+  let answer: Vec<F7> = [5u64, 1, 5, 1].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(p3, answer);
+}
+
 pub fn mul_by_const<T: PrimeField>(a: &[T], scalar: T) -> Vec<T> {
   a.iter().map(|x| *x * scalar).collect()
+}
+
+#[test]
+fn test_mul_by_const() {
+  use crate::f7::F7;
+
+  // p(x) = 4 + 2x + x^3
+  let p: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  let scalar = F7::from(5u64);
+  // q(x) = 5 * p(x)
+  let q = mul_by_const(&p, scalar);
+  let answer: Vec<F7> = [6u64, 3, 0, 5].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(q, answer);
 }
 
 // recommend to use the DFT in the case of high degree
@@ -110,6 +187,20 @@ pub fn mul_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
   o
 }
 
+#[test]
+fn test_mul_polys_low_degree() {
+  use crate::f7::F7;
+
+  // p1(x) = 4 + 2x + x^3
+  let p1: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  // p2(x) = 6 + x + 2x^2
+  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  // p3(x) = 3 + 2x + 3x^2 + 3x^3 + 1x^4 + 2x^5
+  let p3 = mul_polys(&p1, &p2);
+  let answer: Vec<F7> = [3u64, 2, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(p3, answer);
+}
+
 // recommend to use the DFT in the case of high degree
 pub fn div_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
   assert!(a.len() >= b.len());
@@ -117,20 +208,45 @@ pub fn div_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
   let mut o = vec![];
   let mut apos = a.len() - 1;
   let bpos = b.len() - 1;
-  let mut diff = apos - bpos + 1;
-  while diff != 0 {
+  let diff = apos - bpos;
+  for d in (0..(diff + 1)).rev() {
     let quot = c[apos] * b[bpos].invert().unwrap();
     o.push(quot);
-    for i in (bpos + 1)..0 {
-      c[diff + i] -= b[i - 1] * quot;
+    for i in (0..(bpos + 1)).rev() {
+      c[d + i] -= b[i] * quot;
     }
 
     apos -= 1;
-    diff -= 1;
   }
 
   o.reverse();
   o
+}
+
+#[test]
+fn test_div_polys_low_degree() {
+  use crate::f7::F7;
+
+  // p1(x) = 3 + 2x + 3x^2 + 3x^3 + 1x^4 + 2x^5
+  let p1: Vec<F7> = [3u64, 2, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  // p2(x) = 6 + x + 2x^2
+  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  // p3(x) = 0
+  let p3 = div_polys(&p1, &p2);
+  let answer: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(p3, answer);
+}
+
+#[test]
+#[should_panic(expected = "assertion failed: a.len() >= b.len()")]
+fn test_panic_div_polys_low_degree() {
+  use crate::f7::F7;
+
+  // p1(x) = 3 + 2x + 3x^2 + 3x^3 + 1x^4 + 2x^5
+  let p1: Vec<F7> = [3u64, 2, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  // p2(x) = 6 + x + 2x^2
+  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  div_polys(&p2, &p1);
 }
 
 // recommend to use the DFT in the case of high degree
@@ -138,6 +254,38 @@ pub fn mod_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
   sub_polys(a, &mul_polys(b, &div_polys(a, b)))
     .drain(0..(b.len() - 1))
     .collect()
+}
+
+#[test]
+fn test_mod_polys_low_degree() {
+  use crate::f7::F7;
+
+  // p1(x) = 5 + 4x + 3x^2 + 3x^3 + 1x^4 + 2x^5
+  let p1: Vec<F7> = [5u64, 4, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  // p2(x) = 6 + x + 2x^2
+  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  // p3(x) = 2 + 2x
+  let p3 = mod_polys(&p1, &p2);
+  let answer: Vec<F7> = [2u64, 2].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(p3, answer);
+
+  // p1(x) = 5 + 2x + 3x^2 + 3x^3 + 1x^4 + 2x^5
+  let p1: Vec<F7> = [5u64, 2, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  // p2(x) = 6 + x + 2x^2
+  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  // p3(x) = 0
+  let p3 = mod_polys(&p1, &p2);
+  let answer: Vec<F7> = [2u64, 0].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(p3, answer);
+
+  // p1(x) = 3 + 2x + 3x^2 + 3x^3 + 1x^4 + 2x^5
+  let p1: Vec<F7> = [3u64, 2, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  // p2(x) = 6 + x + 2x^2
+  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  // p3(x) = 0
+  let p3 = mod_polys(&p1, &p2);
+  let answer: Vec<F7> = [0u64, 0].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(p3, answer);
 }
 
 // Build a polynomial from a few coefficients
@@ -149,18 +297,68 @@ pub fn sparse<T: PrimeField>(coeff_dict: HashMap<usize, T>) -> Vec<T> {
   o
 }
 
+#[test]
+fn test_sparse() {
+  use crate::f7::F7;
+
+  let mut coeff: HashMap<usize, F7> = HashMap::new();
+  coeff.insert(1usize, F7::from(3u64));
+  coeff.insert(5usize, F7::from(1u64));
+  let p: Vec<F7> = sparse(coeff);
+  let answer: Vec<F7> = [0u64, 3, 0, 0, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(p, answer);
+
+  let mut coeff: HashMap<usize, F7> = HashMap::new();
+  coeff.insert(1usize, F7::from(3u64));
+  coeff.insert(5usize, F7::from(1u64));
+  coeff.insert(6usize, F7::from(0u64));
+  let p: Vec<F7> = sparse(coeff);
+  let answer: Vec<F7> = [0u64, 3, 0, 0, 0, 1, 0]
+    .iter()
+    .map(|c| F7::from(*c))
+    .collect();
+  assert_eq!(p, answer);
+}
+
 // Build a polynomial that returns 0 at all specified xs
 pub fn zpoly<T: PrimeField>(xs: &[T]) -> Vec<T> {
   let mut root = vec![T::one()];
   for i in 0..xs.len() {
     root.push(T::zero());
-    for j in 0..(i + 1) {
-      root[j+1] = root[j+1] - root[j] * xs[i];
+    for j in (0..(i + 1)).rev() {
+      root[j + 1] = root[j + 1] - root[j] * xs[i];
     }
   }
 
   root.reverse();
   root
+}
+
+#[test]
+fn test_zpoly() {
+  use crate::f7::F7;
+
+  let xs: Vec<F7> = [0u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let ys = zpoly(&xs);
+  let answer: Vec<F7> = [0u64, 2, 4, 1].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(ys, answer);
+
+  let xs: Vec<F7> = [0u64, 3, 3].iter().map(|c| F7::from(*c)).collect();
+  let ys = zpoly(&xs);
+  let answer: Vec<F7> = [0u64, 2, 1, 1].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(ys, answer);
+
+  let xs: Vec<F7> = [1, 2, 3, 4, 5, 6].iter().map(|c| F7::from(*c)).collect();
+  let ys = zpoly(&xs);
+  let answer: Vec<F7> = [6u64, 0, 0, 0, 0, 0, 1]
+    .iter()
+    .map(|c| F7::from(*c))
+    .collect();
+  assert_eq!(ys, answer);
+
+  let xs: Vec<F7> = [1, 3, 2, 6, 5, 4].iter().map(|c| F7::from(*c)).collect();
+  let ys = zpoly(&xs);
+  assert_eq!(ys, answer);
 }
 
 // Given p+1 y values and x values with no errors, recovers the original

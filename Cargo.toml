@@ -5,14 +5,14 @@ edition = "2018"
 
 [dependencies]
 blake2 = "0.9.1"
-ff = { version = "0.10", features = ["derive"] }
+ff = { version = "0.10.0", features = ["default", "derive"] }
 group = "0.10"
 pairing_ce = "0.24.2"
-num-bigint = "0.2.3"
-subtle = "2.4.0"
+subtle = "2.4"
 byteorder = "1"
 bitvec = "0.22"
 rand_core = "0.6"
 num = "0.4"
-num-traits = { version = "0.2.11", features = ["i128"], default-features = false }
 hex = "0.4.3"
+
+[lib]

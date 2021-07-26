@@ -2,30 +2,41 @@ use ff::PrimeField;
 use std::convert::TryInto;
 
 pub fn expand_root_of_unity<T: PrimeField>(root_of_unity: T) -> Vec<T> {
-  let mut roots_of_unity = vec![T::one()];
+  let mut output = vec![T::one()];
   let mut current_root = root_of_unity;
   while current_root != T::one() {
-    roots_of_unity.push(current_root);
-    current_root = current_root * root_of_unity;
+    output.push(current_root);
+    current_root *= root_of_unity;
   }
 
-  roots_of_unity
+  output
 }
 
 #[test]
 fn test_expand_root_of_unity() {
   use crate::f7::F7;
-  use crate::fp::Fp;
 
   let root_of_unity = F7::multiplicative_generator();
-  let roots_of_unity = [1, 3, 2, 6, 4, 5].iter().map(|x| F7::from(*x as u64));
+  let roots_of_unity: Vec<F7> = [1, 3, 2, 6, 4, 5]
+    .iter()
+    .map(|x| F7::from(*x as u64))
+    .collect();
   let res = expand_root_of_unity(root_of_unity);
   assert_eq!(res, roots_of_unity);
 
-  let root_of_unity = Fp::multiplicative_generator();
-  let roots_of_unity = [2, 1].iter().map(|x| Fp::from(*x as u64));
+  use crate::ff_utils::ToBytes;
+  use crate::fp::Fp;
+  use crate::utils::parse_bytes_to_u64_vec;
+  use ff::Field;
+  use num::bigint::BigUint;
+
+  let precision = 65536usize;
+  let times_nmr = BigUint::from_bytes_be(&(Fp::zero() - Fp::one()).to_bytes_be().unwrap());
+  let times_dnm =  BigUint::from_bytes_be(&precision.to_be_bytes());
+  let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) /precision
+  let root_of_unity = Fp::multiplicative_generator().pow_vartime(&times);
   let res = expand_root_of_unity(root_of_unity);
-  assert_eq!(res, roots_of_unity);
+  assert_eq!(res.len(), precision);
 }
 
 fn roots_of_unity_rev<T: PrimeField>(roots: &[T]) -> Vec<T> {
@@ -37,15 +48,16 @@ fn roots_of_unity_rev<T: PrimeField>(roots: &[T]) -> Vec<T> {
 }
 
 #[test]
-fn test_expand_root_of_unity_rev() {
-  use crate::fp::Fp;
+fn test_rev_expand_root_of_unity() {
+  use crate::f7::F7;
 
-  let roots: Vec<Fp> = [1, 3, 2, 6, 4, 5]
+  let roots: Vec<F7> = [1, 3, 2, 6, 4, 5]
     .iter()
-    .map(|x| Fp::from(*x as u64))
+    .map(|x| F7::from(*x as u64))
     .collect();
   let roots_rev = roots_of_unity_rev(&roots);
-  assert_eq!(roots_rev, [1, 5, 4, 6, 2, 3]);
+  let answer: Vec<F7> = [1, 5, 4, 6, 2, 3].iter().map(|x| F7::from(*x)).collect();
+  assert_eq!(roots_rev, answer);
 }
 
 fn _simple_ft<T: PrimeField>(values: &[T], roots_of_unity: &[T]) -> Vec<T> {
@@ -116,7 +128,7 @@ fn _fft<T: PrimeField>(values: &[T], roots_of_unity: &[T]) -> Vec<T> {
 
   let l = _fft(&values_from0_step2, &roots_of_unity_step2);
   let r = _fft(&values_from1_step2, &roots_of_unity_step2);
-  let mut o = vec![T::zero(); n];
+  let mut o = vec![T::zero(); l.len() * 2];
   for i in 0..(l.len()) {
     let x = l[i];
     let y = r[i];
@@ -125,7 +137,6 @@ fn _fft<T: PrimeField>(values: &[T], roots_of_unity: &[T]) -> Vec<T> {
     o[i + l.len()] = x - y_times_out;
   }
 
-  assert_eq!(o.len(), n);
   o
 }
 
@@ -143,14 +154,25 @@ fn test_fft() {
     .map(|x| F7::from(*x))
     .collect();
   let res = fft(&values, F7::multiplicative_generator());
-  assert_eq!(res, [1, 1, 1, 1, 1, 1, 0, 0].iter().map(|x| F7::from(*x)));
+  let answer: Vec<F7> = [1, 1, 1, 1, 1, 1, 0, 0]
+    .iter()
+    .map(|x| F7::from(*x))
+    .collect();
+  assert_eq!(res, answer);
 
   let values: Vec<F7> = [1, 0, 2, 1, 0, 1, 0, 0]
     .iter()
     .map(|x| F7::from(*x))
     .collect();
   let res = fft(&values, F7::multiplicative_generator());
-  assert_eq!(res, [5, 2, 0, 1, 1, 4, 0, 0].iter().map(|x| F7::from(*x)));
+  let answer: Vec<F7> = [5, 2, 0, 1, 1, 4, 0, 0]
+      .iter()
+      .map(|x| F7::from(*x))
+      .collect();
+  assert_eq!(
+    res,
+    answer
+  );
 }
 
 fn _inv_fft<T: PrimeField>(values: &[T], roots_rev: &[T]) -> Vec<T> {
