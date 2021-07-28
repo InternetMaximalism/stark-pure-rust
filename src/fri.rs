@@ -1,33 +1,28 @@
 use ff::PrimeField;
-use hex::ToHex;
-use num::bigint::BigUint;
 use std::convert::TryInto;
 // use simple_error::SimpleError;
+use crate::ff_utils::{FromBytes, ToBytes};
 use crate::fft::expand_root_of_unity;
-use crate::permuted_tree::{merklize, mk_multi_branch, verify_multi_branch, bin_length};
+use crate::permuted_tree::{bin_length, get_root, merklize, mk_multi_branch, verify_multi_branch};
 use crate::poly_utils::{eval_poly_at, eval_quartic, lagrange_interp, multi_interp_4};
 use crate::utils::get_pseudorandom_indices;
 
-pub fn parse_hex_to_decimal(value: String) -> String {
-  BigUint::from_bytes_be(value.as_ref()).to_str_radix(10)
-}
-
 pub enum FriProof {
   Last {
-    last: Vec<String>,
+    last: Vec<Vec<u8>>,
   },
   Middle {
-    root2: String,
-    column_branches: Vec<Vec<String>>,
-    poly_branches: Vec<Vec<String>>,
+    root2: Vec<u8>,
+    column_branches: Vec<Vec<Vec<u8>>>,
+    poly_branches: Vec<Vec<Vec<u8>>>,
   },
 }
 
-pub fn prove_low_degree<T: PrimeField + ToHex>(
+pub fn prove_low_degree<T: PrimeField + FromBytes + ToBytes>(
   values: &[T],
   root_of_unity: T,
   max_deg_plus_1: usize,
-  exclude_multiples_of: i32,
+  exclude_multiples_of: u32,
 ) -> Vec<FriProof> {
   prove_low_degree_rec(
     vec![],
@@ -38,12 +33,12 @@ pub fn prove_low_degree<T: PrimeField + ToHex>(
   )
 }
 
-fn prove_low_degree_rec<T: PrimeField + ToHex>(
+fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   mut acc: Vec<FriProof>,
   values: &[T],
   root_of_unity: T,
   max_deg_plus_1: usize,
-  exclude_multiples_of: i32,
+  exclude_multiples_of: u32,
 ) -> Vec<FriProof> {
   println!(
     "Proving {} values are degree <= {}",
@@ -56,7 +51,7 @@ fn prove_low_degree_rec<T: PrimeField + ToHex>(
   if max_deg_plus_1 <= 16 {
     println!("Produced FRI proof");
     acc.push(FriProof::Last {
-      last: values.iter().map(|x| x.encode_hex()).collect(),
+      last: values.iter().map(|x| x.to_bytes_be().unwrap()).collect(),
     });
     return acc;
   }
@@ -67,11 +62,11 @@ fn prove_low_degree_rec<T: PrimeField + ToHex>(
 
   // Put the values into a Merkle tree. This is the root that the
   // proof will be checked against
-  let encoded_values: Vec<String> = values.iter().map(|x| x.encode_hex::<String>()).collect();
+  let encoded_values: Vec<Vec<u8>> = values.iter().map(|x| x.to_bytes_be().unwrap()).collect();
   let m = merklize(&encoded_values);
 
   // Select a pseudo-random x coordinate
-  let special_x = T::from_str(&parse_hex_to_decimal(m.last().unwrap().clone())).unwrap();
+  let special_x = T::from_bytes_be(get_root(&m)).unwrap();
 
   // Calculate the "column" at that x coordinate
   // (see https://vitalik.ca/general/2017/11/22/starks_part_2.html)
@@ -101,13 +96,13 @@ fn prove_low_degree_rec<T: PrimeField + ToHex>(
     .iter()
     .map(|p| eval_quartic(*p, special_x))
     .collect();
-  let encoded_column: Vec<String> = column.iter().map(|p| p.encode_hex::<String>()).collect();
+  let encoded_column: Vec<Vec<u8>> = column.iter().map(|p| p.to_bytes_be().unwrap()).collect();
   let m2 = merklize(&encoded_column);
-  let m2_root = m2[1].clone();
+  let m2_root = get_root(&m2).clone();
 
   // Pseudo-randomly select y indices to sample
   let ys = get_pseudorandom_indices(
-    m2_root.clone(),
+    &m2_root,
     column.len().try_into().unwrap(),
     40,
     exclude_multiples_of,
@@ -144,12 +139,12 @@ fn prove_low_degree_rec<T: PrimeField + ToHex>(
   )
 }
 
-pub fn verify_low_degree_proof<T: PrimeField>(
-  merkle_root: String,
+pub fn verify_low_degree_proof<T: PrimeField + FromBytes + ToBytes>(
+  merkle_root: Vec<u8>,
   root_of_unity: T,
   proof: &[FriProof],
   max_deg_plus_1: usize,
-  exclude_multiples_of: i32,
+  exclude_multiples_of: u32,
 ) -> Result<bool, &str> {
   verify_low_degree_proof_rec(
     merkle_root,
@@ -160,12 +155,12 @@ pub fn verify_low_degree_proof<T: PrimeField>(
   )
 }
 
-pub fn verify_low_degree_proof_rec<T: PrimeField>(
-  mut merkle_root: String,
+pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
+  mut merkle_root: Vec<u8>,
   mut root_of_unity: T,
   proof: &[FriProof],
   mut max_deg_plus_1: usize,
-  exclude_multiples_of: i32,
+  exclude_multiples_of: u32,
 ) -> Result<bool, &str> {
   // Calculate which root of unity we're working with
   let mut test_val = root_of_unity;
@@ -198,11 +193,11 @@ pub fn verify_low_degree_proof_rec<T: PrimeField>(
     println!("Verifying degree <= {:?}", max_deg_plus_1);
 
     // Calculate the pseudo-random x coordinate
-    let special_x = T::from_str(&parse_hex_to_decimal(merkle_root.clone())).unwrap();
+    let special_x = T::from_bytes_be(merkle_root.to_vec()).unwrap();
 
     // Calculate the pseudo-randomly sampled y indices
     let ys = get_pseudorandom_indices(
-      root2.clone(),
+      &root2,
       (rou_deg / 4).try_into().unwrap(),
       40,
       exclude_multiples_of,
@@ -238,10 +233,10 @@ pub fn verify_low_degree_proof_rec<T: PrimeField>(
       // The values from the original polynomial
       let mut row = [T::zero(); 4];
       for j in 0..4 {
-        row[j] = T::from_str(&parse_hex_to_decimal(poly_values[i * 4 + j].clone())).unwrap();
+        row[j] = T::from_bytes_be(poly_values[i * 4 + j].clone()).unwrap();
       }
       rows.push(row);
-      column_vals.push(T::from_str(&parse_hex_to_decimal(column_values[i].clone())).unwrap());
+      column_vals.push(T::from_bytes_be(column_values[i].clone()).unwrap());
     }
 
     // Verify for each selected y coordinate that the four points from the
@@ -274,7 +269,7 @@ pub fn verify_low_degree_proof_rec<T: PrimeField>(
     // return Err(SimpleError::new("The last element of FRI proofs must be FriProof::Last."));
   };
   let m_tree = merklize(last_data);
-  assert_eq!(m_tree[1], merkle_root);
+  assert_eq!(get_root(&m_tree), merkle_root);
 
   // Check the degree of the last_data
   let powers = expand_root_of_unity(root_of_unity);
@@ -289,7 +284,10 @@ pub fn verify_low_degree_proof_rec<T: PrimeField>(
     (0..last_data.len()).collect()
   };
 
-  let decoded_last_data: Vec<T> = last_data.iter().map(|x| T::from_str(&parse_hex_to_decimal(x.clone())).unwrap()).collect();
+  let decoded_last_data: Vec<T> = last_data
+    .iter()
+    .map(|x| T::from_bytes_be(x.to_vec()).unwrap())
+    .collect();
   let rest = pts.split_off(max_deg_plus_1.try_into().unwrap());
   let xs: Vec<T> = pts.iter().map(|x| powers[*x]).collect();
   let ys: Vec<T> = pts.iter().map(|x| decoded_last_data[*x]).collect();

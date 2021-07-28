@@ -2,19 +2,25 @@ use blake2::{Blake2s, Digest};
 use std::cmp::min;
 use std::convert::TryInto;
 
-pub fn blake(message: &[u8]) -> String {
+pub fn blake(message: &[u8]) -> Vec<u8> {
   let mut hasher = Blake2s::new();
   hasher.update(message);
   let res = hasher.finalize();
-  format!("{:x}", res)
+  hex::decode(format!("{:x}", res)).unwrap()
 }
 
 #[test]
 pub fn test_blake() {
   let message = b"hello world";
   let res = blake(message);
-  let answer = "9aec6806794561107e594b1f6a8a6b0c92a0cba9acf5e5e93cca06f781813b0b";
-  assert_eq!(res, answer.to_string());
+  let answer =
+    hex::decode("9aec6806794561107e594b1f6a8a6b0c92a0cba9acf5e5e93cca06f781813b0b").unwrap();
+  assert_eq!(res, answer);
+
+  let res2 = blake(&answer);
+  let answer2 =
+    hex::decode("8ea974646c2be3c16f9f52a2e5ebb3d2df7ba184a6440e47fc6fcce6e9d9bdc4").unwrap();
+  assert_eq!(res2, answer2);
 }
 
 pub fn is_a_power_of_2(x: usize) -> bool {
@@ -28,42 +34,42 @@ pub fn is_a_power_of_2(x: usize) -> bool {
 }
 
 pub fn get_pseudorandom_indices(
-  seed: String,
-  modulus: i32,
+  seed: &[u8],
+  modulus: u32,
   count: usize,
-  exclude_multiples_of: i32,
+  exclude_multiples_of: u32,
 ) -> Vec<usize> {
-  assert!(modulus < 2i32.pow(24));
-  let mut data = seed.clone();
+  assert!(modulus < 2u32.pow(24));
+  let mut data = seed.to_vec();
   while data.len() < 4 * count {
-    data += &blake(&data[(data.len() - 32)..].as_ref());
+    let new_data = blake(&data[(data.len() - 32)..]);
+    data.extend(&new_data);
   }
-  println!("{:?}", data);
   if exclude_multiples_of == 0 {
-    (0..(count * 4))
+    return (0..(count * 4))
       .step_by(4)
-      .map(|i| i32::from_str_radix(&data[i..(i + 4)], 16).unwrap() % modulus)
+      .map(|i| u32::from_be_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]) % modulus)
       .map(|i| i.try_into().unwrap())
-      .collect()
-  } else {
-    let real_modulus = modulus * (exclude_multiples_of - 1) / exclude_multiples_of;
-    (0..(count * 4))
-      .step_by(4)
-      .map(|i| i32::from_str_radix(&data[i..(i + 4)], 16).unwrap() % real_modulus)
-      .map(|i| i + 1 + i / (exclude_multiples_of - 1))
-      .map(|i| i.try_into().unwrap())
-      .collect()
+      .collect();
   }
+
+  let real_modulus = modulus * (exclude_multiples_of - 1) / exclude_multiples_of;
+  return (0..(count * 4))
+    .step_by(4)
+    .map(|i| u32::from_be_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]) % real_modulus)
+    .map(|i| i + 1 + i / (exclude_multiples_of - 1))
+    .map(|i| i.try_into().unwrap())
+    .collect();
 }
 
 #[test]
 fn test_get_pseudorandom_indices() {
-  let res = get_pseudorandom_indices(blake(b"hello world"), 7, 5, 0);
-  let answer = [5, 2, 0, 5, 5];
+  let res = get_pseudorandom_indices(&blake(b"hello world"), 7, 5, 0);
+  let answer = [5, 5, 5, 3, 5];
   assert_eq!(res, answer);
 
-  let res = get_pseudorandom_indices(blake(b"hello another world"), 7, 20, 0);
-  let answer = [6, 5, 4, 6, 6, 4, 6, 6, 3, 5, 0, 1, 4, 3, 3, 3, 5, 1, 1, 5];
+  let res = get_pseudorandom_indices(&blake(b"hello another world"), 7, 20, 0);
+  let answer = [3, 0, 2, 4, 4, 1, 4, 2, 5, 1, 3, 2, 1, 0, 0, 1, 6, 5, 2, 3];
   assert_eq!(res, answer);
 }
 

@@ -32,7 +32,7 @@ fn test_expand_root_of_unity() {
 
   let precision = 65536usize;
   let times_nmr = BigUint::from_bytes_be(&(Fp::zero() - Fp::one()).to_bytes_be().unwrap());
-  let times_dnm =  BigUint::from_bytes_be(&precision.to_be_bytes());
+  let times_dnm = BigUint::from_bytes_be(&precision.to_be_bytes());
   let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) /precision
   let root_of_unity = Fp::multiplicative_generator().pow_vartime(&times);
   let res = expand_root_of_unity(root_of_unity);
@@ -142,6 +142,7 @@ fn _fft<T: PrimeField>(values: &[T], roots_of_unity: &[T]) -> Vec<T> {
 
 pub fn fft<T: PrimeField>(values: &[T], root_of_unity: T) -> Vec<T> {
   let roots = expand_root_of_unity(root_of_unity);
+  assert!(values.len() <= roots.len());
   _fft(values, &roots)
 }
 
@@ -149,30 +150,15 @@ pub fn fft<T: PrimeField>(values: &[T], root_of_unity: T) -> Vec<T> {
 fn test_fft() {
   use crate::f7::F7;
 
-  let values: Vec<F7> = [1, 0, 0, 0, 0, 0, 0, 0]
-    .iter()
-    .map(|x| F7::from(*x))
-    .collect();
+  let values: Vec<F7> = [1, 0, 0, 0, 0, 0].iter().map(|x| F7::from(*x)).collect();
   let res = fft(&values, F7::multiplicative_generator());
-  let answer: Vec<F7> = [1, 1, 1, 1, 1, 1, 0, 0]
-    .iter()
-    .map(|x| F7::from(*x))
-    .collect();
+  let answer: Vec<F7> = [1, 1, 1, 1, 1, 1].iter().map(|x| F7::from(*x)).collect();
   assert_eq!(res, answer);
 
-  let values: Vec<F7> = [1, 0, 2, 1, 0, 1, 0, 0]
-    .iter()
-    .map(|x| F7::from(*x))
-    .collect();
+  let values: Vec<F7> = [1, 0, 2, 1, 0, 1].iter().map(|x| F7::from(*x)).collect();
   let res = fft(&values, F7::multiplicative_generator());
-  let answer: Vec<F7> = [5, 2, 0, 1, 1, 4, 0, 0]
-      .iter()
-      .map(|x| F7::from(*x))
-      .collect();
-  assert_eq!(
-    res,
-    answer
-  );
+  let answer: Vec<F7> = [5, 2, 0, 1, 1, 4].iter().map(|x| F7::from(*x)).collect();
+  assert_eq!(res, answer);
 }
 
 fn _inv_fft<T: PrimeField>(values: &[T], roots_rev: &[T]) -> Vec<T> {
@@ -187,6 +173,7 @@ fn _inv_fft<T: PrimeField>(values: &[T], roots_rev: &[T]) -> Vec<T> {
 pub fn inv_fft<T: PrimeField>(values: &[T], root_of_unity: T) -> Vec<T> {
   let roots = expand_root_of_unity(root_of_unity);
   let roots_rev = roots_of_unity_rev(&roots);
+  assert!(values.len() <= roots_rev.len());
   _inv_fft(values, &roots_rev)
 }
 
@@ -195,25 +182,13 @@ fn test_inv_fft() {
   use crate::f7::F7;
 
   let g2 = F7::multiplicative_generator();
-  let values: Vec<F7> = [1, 1, 1, 1, 1, 1, 0, 0]
-    .iter()
-    .map(|x| F7::from(*x))
-    .collect();
-  let answer: Vec<F7> = [1, 0, 0, 0, 0, 0, 0, 0]
-    .iter()
-    .map(|x| F7::from(*x))
-    .collect();
+  let values: Vec<F7> = [1, 1, 1, 1, 1, 1].iter().map(|x| F7::from(*x)).collect();
+  let answer: Vec<F7> = [1, 0, 0, 0, 0, 0].iter().map(|x| F7::from(*x)).collect();
   let res = inv_fft(&values, g2);
   assert_eq!(res, answer);
 
-  let values: Vec<F7> = [5, 2, 0, 1, 1, 4, 0, 0]
-    .iter()
-    .map(|x| F7::from(*x))
-    .collect();
-  let answer: Vec<F7> = [1, 0, 2, 1, 0, 1, 0, 0]
-    .iter()
-    .map(|x| F7::from(*x))
-    .collect();
+  let values: Vec<F7> = [5, 2, 0, 1, 1, 4].iter().map(|x| F7::from(*x)).collect();
+  let answer: Vec<F7> = [1, 0, 2, 1, 0, 1].iter().map(|x| F7::from(*x)).collect();
   let res = inv_fft(&values, g2);
   assert_eq!(res, answer);
 }

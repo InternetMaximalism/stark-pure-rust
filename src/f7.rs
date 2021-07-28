@@ -1,7 +1,8 @@
+use crate::ff_utils::{FromBytes, ToBytes};
 use core::iter::FromIterator;
-use hex::{ToHex, FromHexError};
 use ff::PrimeField;
-use crate::ff_utils::ToBytes;
+use hex::{FromHexError, ToHex};
+use num::bigint::BigUint;
 
 #[derive(PrimeField)]
 #[PrimeFieldModulus = "7"]
@@ -51,4 +52,13 @@ fn test_f7_to_bytes() {
   assert_eq!(x_bytes_be.len(), 8);
   assert_eq!(x_bytes_le, vec![1, 0, 0, 0, 0, 0, 0, 0]);
   assert_eq!(x_bytes_le.len(), 8);
+}
+
+impl FromBytes for F7 {
+  fn from_bytes_be(value: Vec<u8>) -> Option<Self> {
+    Self::from_str(&BigUint::from_bytes_be(&value).to_str_radix(10))
+  }
+  fn from_bytes_le(value: Vec<u8>) -> Option<Self> {
+    Self::from_str(&BigUint::from_bytes_le(&value).to_str_radix(10))
+  }
 }

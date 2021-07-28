@@ -2,7 +2,7 @@
   "editor.formatOnSave": true,
   "editor.formatOnPaste": true,
   "[rust]": {
-    "editor.formatOnSave": false,
+    "editor.formatOnSave": true,
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
     "files.trimTrailingWhitespace": true
