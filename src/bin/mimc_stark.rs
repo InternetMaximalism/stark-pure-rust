@@ -22,15 +22,24 @@ fn mk_seed(messages: &[Vec<u8>]) -> String {
   parse_hex_to_decimal(&blake(&message))
 }
 
-pub fn mimc<T: PrimeField>(mut inp: T, steps: usize, round_constants: &[T]) -> T {
-  // start_time = time.time();
-  let n = round_constants.len();
+pub fn mimc_computational_trace<T: PrimeField>(
+  inp: T,
+  steps: usize,
+  round_constants: &[T],
+) -> Vec<T> {
+  let mut computational_trace = vec![inp];
   for i in 0..(steps - 1) {
-    inp = inp * inp * inp + round_constants[i % n];
+    let last = *computational_trace.last().unwrap();
+    let last_pow3 = last * last * last;
+    computational_trace.push(last_pow3 + round_constants[i % round_constants.len()]);
   }
-  // println!("MIMC computed in %.4f sec" % (time.time() - start_time))
-  inp
+  computational_trace
 }
+
+// pub fn mimc<T: PrimeField>(inp: T, steps: usize, round_constants: &[T]) -> T {
+//   let computational_trace = mimc_computational_trace(inp, steps, round_constants);
+//   *computational_trace.last().unwrap()
+// }
 
 pub struct StarkProof {
   m_root: Vec<u8>,
@@ -76,12 +85,7 @@ pub fn mk_mimc_proof<T: PrimeField + FromBytes + ToBytes>(
   let last_step_position = xs[(steps - 1) * EXTENSION_FACTOR];
 
   // Generate the computational trace
-  let mut computational_trace = vec![inp];
-  for i in 0..(steps - 1) {
-    let last = *computational_trace.last().unwrap();
-    let last_pow3 = last * last * last;
-    computational_trace.push(last_pow3 + round_constants[i % round_constants.len()]);
-  }
+  let computational_trace = mimc_computational_trace(inp, steps, round_constants);
   let output = *computational_trace.last().unwrap();
   println!("Done generating computational trace");
 
@@ -133,7 +137,7 @@ pub fn mk_mimc_proof<T: PrimeField + FromBytes + ToBytes>(
 
   // Compute interpolant of ((1, input), (x_at_last_step, output))
   let interpolant = lagrange_interp(&[T::one(), last_step_position], &[inp, output]); // lagrange_interp_2
-  let i_evaluations = xs.iter().map(|x| eval_poly_at(&interpolant, *x));
+  let i_evaluations: Vec<T> = xs.iter().map(|x| eval_poly_at(&interpolant, *x)).collect();
   // OR
   // i_evaluations = fft(interpolant, modulus, g2)
 
@@ -146,9 +150,9 @@ pub fn mk_mimc_proof<T: PrimeField + FromBytes + ToBytes>(
 
   let b_evaluations: Vec<T> = p_evaluations
     .iter()
-    .zip(i_evaluations)
-    .zip(inv_z2_evaluations)
-    .map(|((p, i), inv_q)| (*p - i) * inv_q)
+    .zip(&i_evaluations)
+    .zip(&inv_z2_evaluations)
+    .map(|((&p, &i), &inv_z2)| (p - i) * inv_z2)
     .collect();
   println!("Computed B polynomial");
 
@@ -179,7 +183,7 @@ pub fn mk_mimc_proof<T: PrimeField + FromBytes + ToBytes>(
 
   // Compute the linear combination. We don"t even both calculating it in
   // coefficient form; we just compute the evaluations
-  let g2_to_the_steps = g2.pow_vartime(&parse_bytes_to_u64_vec(&steps.to_le_bytes()));
+  let g2_to_the_steps = xs[steps];
   let mut powers = vec![T::one()];
   for _ in 1..precision {
     powers.push(*powers.last().unwrap() * g2_to_the_steps);
@@ -196,6 +200,8 @@ pub fn mk_mimc_proof<T: PrimeField + FromBytes + ToBytes>(
     l_evaluations
       .push(d_eval + p_eval * k1 + p_eval * k2 * power + b_eval * k3 + b_eval * power * k4);
   }
+
+  let l_poly = inv_fft(&l_evaluations, g2);
 
   let l_evaluations_str: Vec<Vec<u8>> = l_evaluations
     .iter()
@@ -323,8 +329,8 @@ pub fn verify_mimc_proof<T: PrimeField + FromBytes + ToBytes>(
     let mut m_branch2 = main_branch_leaves[i * 2 + 1].clone();
     let l_of_x = T::from_bytes_be(linear_comb_branch_leaves[i].clone()).unwrap();
 
-    let mut m_branch3 = m_branch1.split_off(32); // m_branch1 = leaves[i * 2][32..]
-    let m_branch4 = m_branch3.split_off(32); // m_branch4 = leaves[i * 2][32..64], m_branch3 = leaves[i * 2][64..]
+    let mut m_branch3 = m_branch1.split_off(32); // m_branch1 = leaves[i * 2][..32]
+    let m_branch4 = m_branch3.split_off(32); // m_branch3 = leaves[i * 2][32..64], m_branch4 = leaves[i * 2][64..]
     let _ = m_branch2.split_off(32); // m_branch2 = main_branch_leaves[i * 2 + 1][..32]
     let p_of_x = T::from_bytes_be(m_branch1).unwrap();
     let p_of_g1x = T::from_bytes_be(m_branch2).unwrap();
@@ -393,6 +399,7 @@ fn main() {
   let constants: Vec<TargetFiniteField> = (0u64..64)
     .map(|i| TargetFiniteField::from(i.pow(7) ^ 42))
     .collect();
+  let computational_trace = mimc_computational_trace(inp, steps, &constants);
   let proof = mk_mimc_proof(inp, steps, &constants);
 
   let StarkProof {
@@ -411,6 +418,7 @@ fn main() {
     len1 + len2
   );
 
-  assert!(verify_mimc_proof(inp, steps, &constants, mimc(inp, steps, &constants), proof).unwrap());
+  let answer = *computational_trace.last().unwrap(); // mimc(inp, steps, &constants)
+  assert!(verify_mimc_proof(inp, steps, &constants, answer, proof).unwrap());
   println!("Done proof verification");
 }

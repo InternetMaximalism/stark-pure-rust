@@ -7,6 +7,7 @@ use crate::permuted_tree::{bin_length, get_root, merklize, mk_multi_branch, veri
 use crate::poly_utils::{eval_poly_at, eval_quartic, lagrange_interp, multi_interp_4};
 use crate::utils::get_pseudorandom_indices;
 
+#[derive(Clone, Debug)]
 pub enum FriProof {
   Last {
     last: Vec<Vec<u8>>,
@@ -46,10 +47,33 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     max_deg_plus_1
   );
 
+  // Calculate the set of x coordinates
+  let xs = expand_root_of_unity(root_of_unity);
+
   // If the degree we are checking for is less than or equal to 32,
   // use the polynomial directly as a proof
   if max_deg_plus_1 <= 16 {
     println!("Produced FRI proof");
+    println!("max_deg_plus_1 {:?}", max_deg_plus_1);
+    let mut pts: Vec<usize> = if exclude_multiples_of != 0 {
+      (0..values.len())
+        .filter(|&x| x % (exclude_multiples_of as usize) != 0)
+        .collect()
+    } else {
+      (0..values.len()).collect()
+    };
+    let rest = pts.split_off(max_deg_plus_1 as usize); // pts[max_deg_plus_1..]
+    let x_vals: Vec<T> = pts.iter().map(|&pos| xs[pos]).collect();
+    let y_vals: Vec<T> = pts.iter().map(|&pos| values[pos]).collect();
+    let poly = lagrange_interp(&x_vals, &y_vals);
+
+    // let v_poly = inv_fft(&values, xs[xs.len() / values.len()]);
+    println!("deg V: {:?}", values[max_deg_plus_1]);
+
+    for (_, &pos) in rest.iter().enumerate() {
+      assert_eq!(eval_poly_at(&poly, xs[pos]), values[pos]);
+    }
+
     acc.push(FriProof::Last {
       last: values.iter().map(|x| x.to_bytes_be().unwrap()).collect(),
     });
@@ -57,8 +81,8 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   }
 
   // Calculate the set of x coordinates
-  let xs = expand_root_of_unity(root_of_unity);
-  assert_eq!(values.len(), xs.len());
+  // let xs = expand_root_of_unity(root_of_unity);
+  // assert_eq!(values.len(), xs.len());
 
   // Put the values into a Merkle tree. This is the root that the
   // proof will be checked against
@@ -101,12 +125,7 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   let m2_root = get_root(&m2).clone();
 
   // Pseudo-randomly select y indices to sample
-  let ys = get_pseudorandom_indices(
-    &m2_root,
-    column.len().try_into().unwrap(),
-    40,
-    exclude_multiples_of,
-  );
+  let ys = get_pseudorandom_indices(&m2_root, column.len() as u32, 40, exclude_multiples_of);
 
   // Compute the positions for the values in the polynomial
   let poly_positions: Vec<usize> = ys
@@ -169,6 +188,7 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
     rou_deg *= 2;
     test_val = test_val * test_val;
   }
+  debug_assert_eq!(root_of_unity.pow_vartime(&[rou_deg]), T::one());
 
   // Powers of the given root of unity 1, p, p**2, p**3 such that p**4 = 1
   let quartic_roots_of_unity = [
@@ -272,13 +292,10 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
   assert_eq!(get_root(&m_tree), merkle_root);
 
   // Check the degree of the last_data
-  let powers = expand_root_of_unity(root_of_unity);
+  let xs = expand_root_of_unity(root_of_unity);
   let mut pts: Vec<usize> = if exclude_multiples_of != 0 {
     (0..last_data.len())
-      .filter(|x| {
-        let exclude_multiples_of_usize: usize = exclude_multiples_of.try_into().unwrap();
-        *x % exclude_multiples_of_usize != 0
-      })
+      .filter(|&pos| pos % (exclude_multiples_of as usize) != 0)
       .collect()
   } else {
     (0..last_data.len()).collect()
@@ -288,12 +305,12 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
     .iter()
     .map(|x| T::from_bytes_be(x.to_vec()).unwrap())
     .collect();
-  let rest = pts.split_off(max_deg_plus_1.try_into().unwrap());
-  let xs: Vec<T> = pts.iter().map(|x| powers[*x]).collect();
-  let ys: Vec<T> = pts.iter().map(|x| decoded_last_data[*x]).collect();
-  let poly = lagrange_interp(&xs, &ys);
-  for x in rest {
-    assert!(eval_poly_at(&poly, powers[x]) == decoded_last_data[x]);
+  let rest = pts.split_off(max_deg_plus_1 as usize); // pts[max_deg_plus_1..]
+  let x_vals: Vec<T> = pts.iter().map(|&pos| xs[pos]).collect();
+  let y_vals: Vec<T> = pts.iter().map(|&pos| decoded_last_data[pos]).collect();
+  let poly = lagrange_interp(&x_vals, &y_vals);
+  for (_, &pos) in rest.iter().enumerate() {
+    assert_eq!(eval_poly_at(&poly, xs[pos]), decoded_last_data[pos]);
   }
 
   println!("FRI proof verified");
