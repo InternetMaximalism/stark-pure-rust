@@ -201,8 +201,6 @@ pub fn mk_mimc_proof<T: PrimeField + FromBytes + ToBytes>(
       .push(d_eval + p_eval * k1 + p_eval * k2 * power + b_eval * k3 + b_eval * power * k4);
   }
 
-  let l_poly = inv_fft(&l_evaluations, g2);
-
   let l_evaluations_str: Vec<Vec<u8>> = l_evaluations
     .iter()
     .map(|x| x.to_bytes_be().unwrap())

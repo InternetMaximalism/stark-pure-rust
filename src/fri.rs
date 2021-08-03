@@ -67,9 +67,6 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     let y_vals: Vec<T> = pts.iter().map(|&pos| values[pos]).collect();
     let poly = lagrange_interp(&x_vals, &y_vals);
 
-    // let v_poly = inv_fft(&values, xs[xs.len() / values.len()]);
-    println!("deg V: {:?}", values[max_deg_plus_1]);
-
     for (_, &pos) in rest.iter().enumerate() {
       assert_eq!(eval_poly_at(&poly, xs[pos]), values[pos]);
     }

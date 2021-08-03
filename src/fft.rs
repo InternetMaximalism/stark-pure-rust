@@ -209,7 +209,7 @@ pub fn mul_polys<T: PrimeField>(a: &[T], b: &[T], root_of_unity: T) -> Vec<T> {
 }
 
 #[test]
-fn test_mul_polys() {
+fn test_mul_polys_via_fft() {
   use crate::f7::F7;
 
   let g2 = F7::multiplicative_generator();
@@ -224,5 +224,36 @@ fn test_mul_polys() {
   let answer: Vec<F7> = [3, 2, 0, 6, 3, 0].iter().map(|x| F7::from(*x)).collect();
   let res = mul_polys(&a, &b, g2);
   // comb(a, b) = [15, 0, 0, 6, 3, 0, 2, 2]
+  assert_eq!(res, answer);
+}
+
+use crate::poly_utils::multi_inv;
+
+pub fn div_polys<T: PrimeField>(a: &[T], b: &[T], root_of_unity: T) -> Vec<T> {
+  let roots = expand_root_of_unity(root_of_unity);
+  let x1 = _fft(a, &roots);
+  let x2 = _fft(b, &roots);
+  let inv_x2: Vec<T> = multi_inv(&x2);
+
+  let n = x1.len();
+  let mut mul_values = Vec::with_capacity(n);
+  for i in 0..n {
+    mul_values.push(x1[i] * inv_x2[i]);
+  }
+
+  let roots_rev = roots_of_unity_rev(&roots);
+  println!("{:?}", _inv_fft(&inv_x2, &roots_rev));
+  _inv_fft(&mul_values, &roots_rev)
+}
+
+#[test]
+fn test_div_polys_via_fft() {
+  use crate::f7::F7;
+
+  let g2 = F7::multiplicative_generator();
+  let a: Vec<F7> = [3, 1, 0, 3, 1, 0].iter().map(|x| F7::from(*x)).collect();
+  let b: Vec<F7> = [2, 3, 1].iter().map(|x| F7::from(*x)).collect();
+  let answer: Vec<F7> = [5, 0, 1].iter().map(|x| F7::from(*x)).collect();
+  let res = div_polys(&a, &b, g2);
   assert_eq!(res, answer);
 }

@@ -175,6 +175,30 @@ fn test_mul_by_const() {
   assert_eq!(q, answer);
 }
 
+pub fn reduction_poly<T: PrimeField>(a: &[T], n: usize) -> Vec<T> {
+  let mut o = vec![T::zero(); n];
+  for i in 0..a.len() {
+    o[i % n] += a[i];
+  }
+
+  o
+}
+
+#[test]
+fn test_reduction_poly() {
+  use crate::f7::F7;
+
+  let p: Vec<F7> = [4u64, 2, 0, 1, 3, 2].iter().map(|c| F7::from(*c)).collect();
+  let q = reduction_poly(&p, 4);
+  let answer: Vec<F7> = [0u64, 4, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(q, answer);
+
+  let p: Vec<F7> = [4u64, 2].iter().map(|c| F7::from(*c)).collect();
+  let q = reduction_poly(&p, 4);
+  let answer: Vec<F7> = [4u64, 2, 0, 0].iter().map(|c| F7::from(*c)).collect();
+  assert_eq!(q, answer);
+}
+
 // recommend to use the DFT in the case of high degree
 pub fn mul_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
   let mut o = vec![T::zero(); a.len() + b.len() - 1];
@@ -201,8 +225,22 @@ fn test_mul_polys_low_degree() {
   assert_eq!(p3, answer);
 }
 
+pub fn poly_scale<T: PrimeField>(a: &[T], n: usize) -> Vec<T> {
+  let mut res = vec![T::zero(); n];
+  res.extend(a);
+  res
+}
+
 // recommend to use the DFT in the case of high degree
 pub fn div_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
+  let zeros_len = b
+    .iter()
+    .rev()
+    .take_while(|&&coeff| coeff == T::zero())
+    .collect::<Vec<&T>>()
+    .len();
+  let b = b[..(b.len() - zeros_len)].to_vec();
+
   assert!(a.len() >= b.len());
   let mut c = a.to_vec();
   let mut o = vec![];

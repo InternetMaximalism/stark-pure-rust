@@ -4,7 +4,9 @@ use stark_pure_rust::ff_utils::{FromBytes, ToBytes};
 use stark_pure_rust::fft::{expand_root_of_unity, fft, inv_fft};
 use stark_pure_rust::fri::{prove_low_degree, verify_low_degree_proof, FriProof};
 use stark_pure_rust::permuted_tree::{get_root, merklize, mk_multi_branch, verify_multi_branch};
-use stark_pure_rust::poly_utils::{eval_poly_at, lagrange_interp, multi_inv};
+use stark_pure_rust::poly_utils::{
+  div_polys, eval_poly_at, lagrange_interp, mul_polys, multi_inv, reduction_poly,
+};
 use stark_pure_rust::utils::{blake, get_pseudorandom_indices, parse_bytes_to_u64_vec};
 use std::convert::TryInto;
 
@@ -91,10 +93,18 @@ impl VerifyForm for R1csContents {
 }
 
 pub fn r1cs_computational_trace<T: PrimeField>(witness: &[T], coefficients: &[T]) -> Vec<T> {
-  let mut computational_trace = witness.to_vec();
   let n_constraints = coefficients.len() / witness.len() / 3;
   let n_wires = witness.len();
   assert_eq!(coefficients.len(), 3 * n_constraints * witness.len());
+
+  let mut computational_trace: Vec<T> = witness
+    .iter()
+    .cycle()
+    .take(3 * n_constraints * witness.len())
+    .map(|&x| x)
+    .collect();
+  debug_assert_eq!(computational_trace.len(), 3 * n_constraints * witness.len());
+
   for (i, &coeff) in coefficients.iter().enumerate() {
     if i % n_wires == 0 {
       computational_trace.push(coeff);
@@ -210,11 +220,10 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   n_constraints: usize,
   n_wires: usize,
 ) -> StarkProof {
-  let original_steps = (3 * n_constraints + 1) * n_wires;
+  let original_steps = 6 * n_constraints * n_wires;
   assert_eq!(computational_trace.len(), original_steps);
 
-  let mut constants = vec![T::one()];
-  constants.extend(vec![T::zero(); n_wires - 1]);
+  let mut constants = coefficients.to_vec();
   constants.extend(coefficients.to_vec());
   assert_eq!(constants.len(), original_steps);
 
@@ -263,100 +272,230 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let k_evaluations = fft(&k_polynomial, g2);
   println!("Converted constants into a polynomial and low-degree extended it");
 
+  // Create the composed polynomial such that
+  // Q(g1^j) = P(g1^(j-1)) + P(g1^(j % n_constraints))*K(g1^j) - P(g1^j)
   // let z1_num_evaluations: Vec<T> = (0..precision)
   //   .map(|i| xs[(i * steps) % precision] - T::one())
   //   .collect();
   // let z1_num_inv = multi_inv(&z1_num_evaluations);
+  let mut z1_dnm_evaluations: Vec<T> = vec![T::one(); precision];
   let mut z1_evaluations: Vec<T> = vec![T::one(); precision];
-
-  // Create the composed polynomial such that
-  // Q(g1^k) = P(g1^(k-1)) + P(g1^(k % n_constraints))*K(g1^k) - P(g1^k)
   let mut q1_evaluations = vec![];
-  let mut q2_evaluations = vec![];
-  for k in 0..precision {
-    let next_k = (k + skips) % precision;
-    let p_of_g1x = p_evaluations[next_k]; // P(g1^next_k)
-    let p_of_x = p_evaluations[k]; // P(g1^(next_k-1))
-    let p_of_g1x_mod = p_evaluations[next_k % (n_wires * steps)]; // P(g1^(next_k % n_wires))
-    let k_of_g1x = k_evaluations[next_k]; // K(g1^next_k)
-    q1_evaluations.push(p_of_g1x - p_of_x + k_of_g1x * p_of_g1x_mod);
+  for j in 0..precision {
+    let half = 3 * n_constraints * n_wires * skips;
+    let p_of_x_plus_half = p_evaluations[(j + half) % precision]; // P(g1^next_k)
+    let p_of_prev_x_plus_half = p_evaluations[(j + half - skips) % precision]; // P(g1^(next_k-1))
+    let p_of_x = p_evaluations[j]; // P(g1^(next_k % n_wires))
+    let k_of_x_plus_half = k_evaluations[(j + half) % precision]; // K(g1^next_k)
 
-    if k < original_steps * skips && (k < steps || (k - steps) % (n_wires * skips) != 0) {
+    q1_evaluations.push(p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x);
+    if j == 393 {
+      println!(
+        "{:?} {:?}    {:?} {:?}    {:?}",
+        p_of_x,
+        p_of_prev_x_plus_half,
+        p_of_x_plus_half,
+        k_of_x_plus_half,
+        p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x
+      );
+    }
+
+    // if (p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x == T::zero()) {
+    //   println!("valid {}", j);
+    // }
+
+    if (j >= original_steps * skips / 2 || j % (n_wires * skips) == 0 || j % skips != 0)
+      && (j % skips == 0)
+    {
+      // println!("invalid {}", j);
+      z1_dnm_evaluations = z1_dnm_evaluations
+        .iter()
+        .enumerate()
+        .map(|(i, &val)| val * (xs[i] - xs[j]))
+        .collect();
+    } else if j < original_steps * skips / 2 && j % skips == 0 && j % (n_wires * skips) != 0 {
+      // println!("invalid {}", j);
       z1_evaluations = z1_evaluations
         .iter()
         .enumerate()
-        .map(|(i, &val)| val * (xs[i] - xs[k]))
+        .map(|(i, &val)| val * (xs[i] - xs[j]))
         .collect();
     }
   }
-  let z1_inv_evaluations = multi_inv(&z1_evaluations);
 
+  let mut z2_dnm_evaluations: Vec<T> = vec![T::one(); precision];
   let mut z2_evaluations: Vec<T> = vec![T::one(); precision];
-  for k in 0..precision {
-    let k1 = k; // (k + (n_wires - 1) * skips) % precision;
-    let k2 = (k1 + n_wires * skips) % precision;
-    let k3 = (k2 + n_wires * skips) % precision;
-    let a_eval = p_evaluations[k1];
-    let b_eval = p_evaluations[k2];
-    let c_eval = p_evaluations[k3];
+  let mut q2_evaluations = vec![];
+  for j in 0..precision {
+    let j1 = j;
+    let j2 = (j1 + n_wires * skips) % precision;
+    let j3 = (j2 + n_wires * skips) % precision;
+    let a_eval = p_evaluations[j1];
+    let b_eval = p_evaluations[j2];
+    let c_eval = p_evaluations[j3];
     q2_evaluations.push(c_eval - a_eval * b_eval);
 
-    if k < original_steps * skips
-      && k >= (2 * n_wires - 1) * skips
-      && (k - (2 * n_wires - 1) * skips) % (3 * n_wires * skips) == 0
+    if j % skips == 0
+    // c_eval == a_eval * b_eval
     {
+      println!("{:03} {:?} {:?}    {:?}", j, a_eval, b_eval, c_eval);
+    }
+
+    // if j < original_steps * skips
+    //   && j >= (2 * n_wires - 1) * skips
+    //   && (j - (2 * n_wires - 1) * skips) % (3 * n_wires * skips) == 0
+    if (j >= original_steps * skips / 2
+      || j < (n_wires - 1) * skips
+      || (j - (n_wires - 1) * skips) % (3 * n_wires * skips) != 0)
+      && j % skips == 0
+    {
+      z2_dnm_evaluations = z2_dnm_evaluations
+        .iter()
+        .enumerate()
+        .map(|(i, &val)| val * (xs[i] - xs[j]))
+        .collect();
+    }
+
+    if j < original_steps * skips
+      && j >= original_steps * skips / 2
+      && (j - (n_wires - 1) * skips) % (3 * n_wires * skips) == 0
+    {
+      println!("invalid {}", j);
       z2_evaluations = z2_evaluations
         .iter()
         .enumerate()
-        .map(|(i, &val)| val * (xs[i] - xs[k]))
+        .map(|(i, &val)| val * (xs[i] - xs[j]))
         .collect();
     }
   }
-  let z2_inv_evaluations = multi_inv(&z2_evaluations);
   println!("Computed Q polynomial");
 
   // Compute D(x) = Q(x) / Z(x)
-  // let z1_inv_evaluations: Vec<T> = z1_den_evaluations
-  //   .iter()
-  //   .zip(&z1_num_inv)
-  //   .map(|(&z1d, &z1ni)| z1d * z1ni)
+  // let z_nmr_evaluations: Vec<T> = (0..precision)
+  //   .map(|i| xs[(i * steps) % precision] - T::one())
   //   .collect();
+  let z_nmr_evaluations: Vec<T> = (0..precision)
+    .map(|i| xs[(i * steps) % precision] - T::one())
+    .collect();
+  let inv_z_nmr_evaluations: Vec<T> = multi_inv(&z_nmr_evaluations);
+  let inv_z1_evaluations: Vec<T> = multi_inv(&z1_evaluations);
+  let inv_z2_evaluations: Vec<T> = multi_inv(&z2_evaluations);
+  // let inv_z1_evaluations: Vec<T> = z1_dnm_evaluations
+  //   .iter()
+  //   .zip(&inv_z_nmr_evaluations)
+  //   .map(|(&z1d, &zni)| z1d * zni)
+  //   .collect();
+  // let z1_evaluations: Vec<T> = inv_z1_dnm_evaluations
+  //   .iter()
+  //   .zip(&z_nmr_evaluations)
+  //   .map(|(&z1d, &zni)| z1d * zni)
+  //   .collect();
+  // for (i, (&q1, &z1)) in q1_evaluations.iter().zip(&z1_evaluations).enumerate() {
+  //   if z1 == T::zero() {
+  //     if q1 != T::zero() {
+  //       assert_eq!(i, 0);
+  //     } else {
+  //       println!("valid {:?}", i);
+  //     }
+  //   }
+  // }
+  // let z1_polynomial = inv_fft(&z1_evaluations, g2);
+  // let q1_polynomial = reduction_poly(&inv_fft(&q1_evaluations, g2), precision);
+  // let d1_polynomial = div_polys(&q1_polynomial, &z1_polynomial);
+  // let q1_polynomial_copy = reduction_poly(&mul_polys(&z1_polynomial, &d1_polynomial), precision);
+  // assert_eq!(q1_polynomial, q1_polynomial_copy);
+  // println!("{:?}", d1_polynomial);
+
+  // let d1_evaluations = fft(&d1_polynomial, g2);
+  // println!("{:?}", d1_evaluations);
   let d1_evaluations: Vec<T> = q1_evaluations
     .iter()
-    .zip(&z1_inv_evaluations)
+    .zip(&inv_z1_evaluations)
     .map(|(&q1, &z1i)| q1 * z1i)
     .collect();
-  let d1_poly = inv_fft(&d1_evaluations, g2);
-  for (i, (&q1, &z1i)) in q1_evaluations.iter().zip(&z1_inv_evaluations).enumerate() {
-    if z1i == T::zero() {
-      if q1 != T::zero() {
-        println!("invalid {:?}", i);
-      } else {
-        println!("valid {:?}", i);
-      }
-    }
-  }
-  println!("deg Q1: {:?}", q1_evaluations[64]);
-  println!("deg Z1: {:?}", z1_inv_evaluations[64]);
-  println!("deg D1: {:?}", d1_poly[64]);
+  println!("deg P1: {:?}", p_evaluations[(393 + 240 - 8) % 512]);
+  println!("deg P1: {:?}", p_evaluations[(393 + 240) % 512]);
+  println!("deg P1: {:?}", p_evaluations[393]);
+  println!("deg K1: {:?}", k_evaluations[(393 + 240) % 512]);
+  println!("deg Q1: {:?}", q1_evaluations[393]);
+  println!("deg D1: {:?}", d1_evaluations[393]);
+  println!("Z1_dnm: {:?}", z1_dnm_evaluations[393]);
+  println!("Z1_nmr^-1: {:?}", inv_z_nmr_evaluations[393]);
+  println!(
+    "Z1^-1: {:?}",
+    z1_dnm_evaluations[393] * inv_z_nmr_evaluations[393]
+  );
+  println!("deg Z1: {:?}", z1_evaluations[393]);
+  println!("deg D1*Z1: {:?}", d1_evaluations[393] * z1_evaluations[393]);
+  println!(
+    "Q1(X)/Z1(X): {:?}",
+    q1_evaluations[393] * z1_evaluations[393].invert().unwrap()
+  );
 
-  for (i, (&q1, &z1i)) in q2_evaluations.iter().zip(&z2_inv_evaluations).enumerate() {
-    if q1 == T::zero() {
-      if z1i != T::zero() {
-        println!("invalid {:?}", i);
-      } else {
-        println!("valid {:?}", i);
-      }
-    }
-  }
   let d2_evaluations: Vec<T> = q2_evaluations
     .iter()
-    .zip(&z2_inv_evaluations)
+    .zip(&inv_z2_evaluations)
     .map(|(&q2, &z2i)| q2 * z2i)
     .collect();
-  let d2_poly = inv_fft(&d2_evaluations, g2);
-  println!("deg D2: {:?}", d2_poly[64]);
   println!("Computed D polynomial");
+  println!("deg Q2: {:?}", q2_evaluations[510]);
+  println!("deg D2: {:?}", d2_evaluations[510]);
+  println!("Z2_dnm: {:?}", z2_dnm_evaluations[510]);
+  println!("Z2_nmr^-1: {:?}", inv_z_nmr_evaluations[510]);
+  println!(
+    "Z2^-1: {:?}",
+    z2_dnm_evaluations[510] * inv_z_nmr_evaluations[510]
+  );
+  println!(
+    "Z2: {:?}",
+    (z2_dnm_evaluations[510] * inv_z_nmr_evaluations[510])
+      .invert()
+      .unwrap()
+  );
+
+  // {
+  //   let ys = &d1_evaluations;
+  //   // let ys: Vec<T> = inv_z1_dnm_evaluations
+  //   //   .iter()
+  //   //   .map(|&z1| {
+  //   //     if z1 == T::zero() {
+  //   //       T::zero()
+  //   //     } else {
+  //   //       z1.invert().unwrap()
+  //   //     }
+  //   //   })
+  //   //   .collect();
+  //   // let ys: Vec<T> = inv_z1_dnm_evaluations
+  //   //   .iter()
+  //   //   .zip(&z_nmr_evaluations)
+  //   //   .map(|(&z1di, &z1n)| (z1di * z1n))
+  //   //   .collect();
+  //   // let ys = multi_inv(&inv_z1_dnm_evaluations);
+  //   // let ys: Vec<T> = ys
+  //   //   .iter()
+  //   //   .zip(&q1_evaluations)
+  //   //   .map(|(&z1i, &q1)| (z1i * q1))
+  //   //   .collect();
+  //   let mut pts: Vec<usize> = (0..ys.len())
+  //     .filter(|&x| x % (skips as usize) != 0)
+  //     .collect();
+  //   for &pos in pts.iter().peekable() {
+  //     assert_eq!(
+  //       q1_evaluations[pos],
+  //       d1_evaluations[pos] * z1_evaluations[pos]
+  //     );
+  //   }
+  //   let rest = pts.split_off(7 * ys.len() / 8 - 1); // 3 * precision / 4 + 1); // pts[max_deg_plus_1..]
+  //   let x_vals: Vec<T> = pts.iter().map(|&pos| xs[pos]).collect();
+  //   let y_vals: Vec<T> = pts.iter().map(|&pos| ys[pos]).collect();
+  //   let poly = lagrange_interp(&x_vals, &y_vals);
+
+  //   // println!("{:?}", poly);
+  //   // println!("{:?}", poly.len());
+  //   for (_, &pos) in rest.iter().enumerate() {
+  //     assert_eq!(eval_poly_at(&poly, xs[pos]), ys[pos]);
+  //   }
+  // }
 
   // Compute interpolant of ((1, input), (x_at_last_step, output))
   let interpolant = {
@@ -430,6 +569,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // Based on the hashes of P, D and B, we select a random linear combination
   // of P * x^steps, P, B * x^steps, B and D, and prove the low-degreeness of that,
   // instead of proving the low-degreeness of P, B and D separately
+  let k0 = T::one();
   let k1 = T::from_str(&mk_seed(&[m_root.clone(), b"\x01".to_vec()])).unwrap();
   let k2 = T::from_str(&mk_seed(&[m_root.clone(), b"\x02".to_vec()])).unwrap();
   let k3 = T::from_str(&mk_seed(&[m_root.clone(), b"\x03".to_vec()])).unwrap();
@@ -456,13 +596,12 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     .take(precision)
   {
     l_evaluations.push(
-      d2_of_x
-        + k1 * p_of_x
-        + k2 * p_of_x * x_to_the_steps
-        + k3 * b_of_x
-        + k4 * b_of_x * x_to_the_steps
-        // + k5 * d1_of_x
-        // + k6 * d1_of_x * x_to_the_steps,
+      k0 * d1_of_x
+        + k1 * d2_of_x
+        + k2 * p_of_x
+        + k3 * p_of_x * x_to_the_steps
+        + k4 * b_of_x
+        + k5 * b_of_x * x_to_the_steps,
     );
   }
 
@@ -485,13 +624,14 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     skips as u32,
   );
   let mut augmented_positions = vec![];
-  for &x in positions.iter().peekable() {
+  for &j in positions.iter().peekable() {
+    let half = 3 * n_constraints * n_wires * skips;
     augmented_positions.extend([
-      x,
-      (x + skips) % precision,
-      (x + skips) % (n_wires * skips),
-      (x + n_wires * skips) % precision,
-      (x + 2 * n_wires * skips) % precision,
+      j,
+      (j + half - skips) % precision,
+      (j + half) % precision,
+      (j + n_wires * skips) % precision,
+      (j + 2 * n_wires * skips) % precision,
     ]);
   }
   // let branches: Vec<T> = vec![];
@@ -523,11 +663,10 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   n_constraints: usize,
   n_wires: usize,
 ) -> Result<bool, String> {
-  let original_steps = (3 * n_constraints + 1) * n_wires;
+  let original_steps = 6 * n_constraints * n_wires;
   assert_eq!(computational_trace.len(), original_steps);
 
-  let mut constants = vec![T::one()];
-  constants.extend(vec![T::zero(); n_wires - 1]);
+  let mut constants = coefficients.to_vec();
   constants.extend(coefficients.to_vec());
   assert_eq!(constants.len(), original_steps);
 
@@ -573,6 +712,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   );
 
   // Performs the spot checks
+  let k0 = T::one();
   let k1 = T::from_str(&mk_seed(&[m_root.clone(), b"\x01".to_vec()])).unwrap();
   let k2 = T::from_str(&mk_seed(&[m_root.clone(), b"\x02".to_vec()])).unwrap();
   let k3 = T::from_str(&mk_seed(&[m_root.clone(), b"\x03".to_vec()])).unwrap();
@@ -586,13 +726,14 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     skips as u32,
   );
   let mut augmented_positions = vec![];
-  for &x in positions.iter().peekable() {
+  for &j in positions.iter().peekable() {
+    let half = 3 * n_constraints * n_wires * skips;
     augmented_positions.extend([
-      x,
-      (x + skips) % precision,
-      (x + skips) % (n_wires * skips),
-      (x + n_wires * skips) % precision,
-      (x + 2 * n_wires * skips) % precision,
+      j,
+      (j + half - skips) % precision,
+      (j + half) % precision,
+      (j + n_wires * skips) % precision,
+      (j + 2 * n_wires * skips) % precision,
     ]);
   }
 
@@ -614,20 +755,20 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // }
   // let z1_den_inv = multi_inv(&z1_den_evaluations);
   let mut z1_evaluations: Vec<T> = vec![T::one(); precision];
-
-  for k in 0..precision {
-    if k < original_steps * skips && (k < steps || (k - steps) % (n_wires * skips) != 0) {
+  for wk in 0..(n_wires * n_constraints) {
+    let j = wk * n_wires * skips;
+    if j % (n_wires * skips) != 0 {
       z1_evaluations = z1_evaluations
         .iter()
         .enumerate()
-        .map(|(i, &val)| val * (xs[i] - xs[k]))
+        .map(|(i, &val)| val * (xs[i] - xs[j]))
         .collect();
     }
   }
 
   let mut z2_evaluations: Vec<T> = vec![T::one(); precision];
   for k in 0..n_constraints {
-    let j = ((3 * k + 2) * n_wires - 1) * skips;
+    let j = (original_steps * skips / 2 + (3 * k + 1) * n_wires - 1) * skips;
     z2_evaluations = z2_evaluations
       .iter()
       .enumerate()
@@ -652,8 +793,8 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     let _ = m_branch10.split_off(32); // m_branch10 = leaves[i * 5 + 3][..32]
     let _ = m_branch11.split_off(32); // m_branch11 = leaves[i * 5 + 4][..32]
     let p_of_x = T::from_bytes_be(m_branch0).unwrap();
-    let p_of_g1x = T::from_bytes_be(m_branch1).unwrap();
-    let p_of_g1x_mod_w = T::from_bytes_be(m_branch2).unwrap();
+    let p_of_prev_x_plus_half = T::from_bytes_be(m_branch1).unwrap();
+    let p_of_x_plus_half = T::from_bytes_be(m_branch2).unwrap();
     let d1_of_x = T::from_bytes_be(m_branch3).unwrap();
     let d2_of_x = T::from_bytes_be(m_branch4).unwrap();
     let b_of_x = T::from_bytes_be(m_branch5).unwrap();
@@ -663,28 +804,41 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     let z1_value = z1_evaluations[pos];
     let z2_value = z2_evaluations[pos];
 
-    let x = g2.pow_vartime(&parse_bytes_to_u64_vec(&pos.to_le_bytes()));
-    let k_of_g1x = eval_poly_at(&k_polynomial, x * g1);
-
-    // Check first transition constraints Q1(x) = Z1(x) * D1(x)
-    println!(
-      "{:03} {:?} {:?}    {:?} {:?}    {:?} {:?}",
-      pos, p_of_g1x, p_of_x, p_of_g1x_mod_w, k_of_g1x, z1_value, d1_of_x
+    let x = xs[pos]; // g2.pow_vartime(&parse_bytes_to_u64_vec(&pos.to_le_bytes()));
+    let k_of_x_plus_half = eval_poly_at(
+      &k_polynomial,
+      xs[(pos + 3 * n_constraints * n_wires * skips) % precision],
     );
+    // Check first transition constraints Q1(x) = Z1(x) * D1(x)
+    // println!(
+    //   "{:03} {:?} {:?}    {:?} {:?}    {:?} {:?}",
+    //   pos, p_of_x, p_of_prev_x_plus_half, p_of_x_plus_half, k_of_x_plus_half, z1_value, d1_of_x
+    // );
     assert_eq!(
-      p_of_g1x - p_of_x - k_of_g1x * p_of_g1x_mod_w,
+      p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x,
       z1_value * d1_of_x
     );
+
     // Check second transition constraints Q2(x) = Z2(x) * D2(x)
+    // println!(
+    //   "{:03} {:?} {:?}    {:?} {:?}    {:?} {:?}",
+    //   pos,
+    //   p_of_x,
+    //   p_of_x_plus_w,
+    //   p_of_x_plus_2w,
+    //   z2_value * d2_of_x,
+    //   z2_value,
+    //   d2_of_x
+    // );
     assert_eq!(p_of_x_plus_2w - p_of_x * p_of_x_plus_w, z2_value * d2_of_x);
 
     // Check boundary constraints P(x) - I(x) = Zb(x) * B(x)
     let interpolant = {
       let mut x_vals = vec![];
       let mut y_vals = vec![];
-      for j in 0..n_wires {
-        x_vals.push(xs[j * skips]);
-        y_vals.push(computational_trace[j]);
+      for w in 0..n_wires {
+        x_vals.push(xs[w * skips]);
+        y_vals.push(computational_trace[w]);
       }
 
       for k in 0..n_constraints {
@@ -694,23 +848,36 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
       }
       lagrange_interp(&x_vals, &y_vals)
     };
+
     let mut zb_of_x = T::one();
     for w in 0..n_wires {
-      zb_of_x = zb_of_x * (xs[pos] - xs[w * skips]);
+      let j = w * skips;
+      zb_of_x = zb_of_x * (x - xs[j]);
     }
+    for k in 0..n_constraints {
+      let j = (3 * k + 1) * n_wires * skips;
+      zb_of_x = zb_of_x * (x - xs[j]);
+    }
+    // println!(
+    //   "{:03} {:?} {:?}    {:?} {:?}",
+    //   pos,
+    //   p_of_x,
+    //   eval_poly_at(&interpolant, x),
+    //   zb_of_x,
+    //   b_of_x
+    // );
     assert_eq!(p_of_x - eval_poly_at(&interpolant, x), zb_of_x * b_of_x);
 
     // Check correctness of the linear combination
     let x_to_the_steps = x.pow_vartime(&parse_bytes_to_u64_vec(&steps.to_le_bytes()));
     assert_eq!(
-      d2_of_x
-        + k1 * p_of_x
-        + k2 * p_of_x * x_to_the_steps
-        + k3 * b_of_x
-        + k4 * b_of_x * x_to_the_steps,
-      // + k5 * d1_of_x
-      // + k6 * d1_of_x * x_to_the_steps,
-      l_of_x
+      l_of_x,
+      k0 * d1_of_x
+        + k1 * d2_of_x
+        + k2 * p_of_x
+        + k3 * p_of_x * x_to_the_steps
+        + k4 * b_of_x
+        + k5 * b_of_x * x_to_the_steps,
     );
   }
 
