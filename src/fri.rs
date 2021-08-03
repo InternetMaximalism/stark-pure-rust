@@ -54,7 +54,6 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   // use the polynomial directly as a proof
   if max_deg_plus_1 <= 16 {
     println!("Produced FRI proof");
-    println!("max_deg_plus_1 {:?}", max_deg_plus_1);
     let mut pts: Vec<usize> = if exclude_multiples_of != 0 {
       (0..values.len())
         .filter(|&x| x % (exclude_multiples_of as usize) != 0)

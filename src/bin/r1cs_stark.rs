@@ -4,11 +4,8 @@ use stark_pure_rust::ff_utils::{FromBytes, ToBytes};
 use stark_pure_rust::fft::{expand_root_of_unity, fft, inv_fft};
 use stark_pure_rust::fri::{prove_low_degree, verify_low_degree_proof, FriProof};
 use stark_pure_rust::permuted_tree::{get_root, merklize, mk_multi_branch, verify_multi_branch};
-use stark_pure_rust::poly_utils::{
-  div_polys, eval_poly_at, lagrange_interp, mul_polys, multi_inv, reduction_poly,
-};
+use stark_pure_rust::poly_utils::{eval_poly_at, lagrange_interp, multi_inv};
 use stark_pure_rust::utils::{blake, get_pseudorandom_indices, parse_bytes_to_u64_vec};
-use std::convert::TryInto;
 
 fn parse_hex_to_decimal(value: &[u8]) -> String {
   BigUint::from_bytes_be(value).to_str_radix(10)
@@ -260,12 +257,8 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
 
   // Interpolate the computational trace into a polynomial P, with each step
   // along a successive power of g1
-  println!("{:?}", computational_trace.len());
   let p_polynomial = inv_fft(&computational_trace, g1);
-  println!("deg P: {}", p_polynomial.len());
   let p_evaluations = fft(&p_polynomial, g2);
-  let p_poly = inv_fft(&p_evaluations, g2);
-  println!("deg P: {:?}", p_poly[64]);
   println!("Converted computational steps into a polynomial and low-degree extended it");
 
   let k_polynomial = inv_fft(&constants, g1);
@@ -278,7 +271,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   //   .map(|i| xs[(i * steps) % precision] - T::one())
   //   .collect();
   // let z1_num_inv = multi_inv(&z1_num_evaluations);
-  let mut z1_dnm_evaluations: Vec<T> = vec![T::one(); precision];
+  // let mut z1_dnm_evaluations: Vec<T> = vec![T::one(); precision];
   let mut z1_evaluations: Vec<T> = vec![T::one(); precision];
   let mut q1_evaluations = vec![];
   for j in 0..precision {
@@ -289,32 +282,32 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     let k_of_x_plus_half = k_evaluations[(j + half) % precision]; // K(g1^next_k)
 
     q1_evaluations.push(p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x);
-    if j == 393 {
-      println!(
-        "{:?} {:?}    {:?} {:?}    {:?}",
-        p_of_x,
-        p_of_prev_x_plus_half,
-        p_of_x_plus_half,
-        k_of_x_plus_half,
-        p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x
-      );
-    }
+    // if j == 393 {
+    //   println!(
+    //     "{:?} {:?}    {:?} {:?}    {:?}",
+    //     p_of_x,
+    //     p_of_prev_x_plus_half,
+    //     p_of_x_plus_half,
+    //     k_of_x_plus_half,
+    //     p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x
+    //   );
+    // }
 
     // if (p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x == T::zero()) {
     //   println!("valid {}", j);
     // }
 
-    if (j >= original_steps * skips / 2 || j % (n_wires * skips) == 0 || j % skips != 0)
-      && (j % skips == 0)
-    {
-      // println!("invalid {}", j);
-      z1_dnm_evaluations = z1_dnm_evaluations
-        .iter()
-        .enumerate()
-        .map(|(i, &val)| val * (xs[i] - xs[j]))
-        .collect();
-    } else if j < original_steps * skips / 2 && j % skips == 0 && j % (n_wires * skips) != 0 {
-      // println!("invalid {}", j);
+    // if (j >= original_steps * skips / 2 || j % (n_wires * skips) == 0 || j % skips != 0)
+    //   && (j % skips == 0)
+    // {
+    //   z1_dnm_evaluations = z1_dnm_evaluations
+    //     .iter()
+    //     .enumerate()
+    //     .map(|(i, &val)| val * (xs[i] - xs[j]))
+    //     .collect();
+    // }
+
+    if j < original_steps * skips / 2 && j % skips == 0 && j % (n_wires * skips) != 0 {
       z1_evaluations = z1_evaluations
         .iter()
         .enumerate()
@@ -323,7 +316,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     }
   }
 
-  let mut z2_dnm_evaluations: Vec<T> = vec![T::one(); precision];
+  // let mut z2_dnm_evaluations: Vec<T> = vec![T::one(); precision];
   let mut z2_evaluations: Vec<T> = vec![T::one(); precision];
   let mut q2_evaluations = vec![];
   for j in 0..precision {
@@ -335,32 +328,31 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     let c_eval = p_evaluations[j3];
     q2_evaluations.push(c_eval - a_eval * b_eval);
 
-    if j % skips == 0
-    // c_eval == a_eval * b_eval
-    {
-      println!("{:03} {:?} {:?}    {:?}", j, a_eval, b_eval, c_eval);
-    }
+    // if j % skips == 0
+    // // c_eval == a_eval * b_eval
+    // {
+    //   println!("{:03} {:?} {:?}    {:?}", j, a_eval, b_eval, c_eval);
+    // }
 
     // if j < original_steps * skips
     //   && j >= (2 * n_wires - 1) * skips
     //   && (j - (2 * n_wires - 1) * skips) % (3 * n_wires * skips) == 0
-    if (j >= original_steps * skips / 2
-      || j < (n_wires - 1) * skips
-      || (j - (n_wires - 1) * skips) % (3 * n_wires * skips) != 0)
-      && j % skips == 0
-    {
-      z2_dnm_evaluations = z2_dnm_evaluations
-        .iter()
-        .enumerate()
-        .map(|(i, &val)| val * (xs[i] - xs[j]))
-        .collect();
-    }
+    // if (j >= original_steps * skips / 2
+    //   || j < (n_wires - 1) * skips
+    //   || (j - (n_wires - 1) * skips) % (3 * n_wires * skips) != 0)
+    //   && j % skips == 0
+    // {
+    //   z2_dnm_evaluations = z2_dnm_evaluations
+    //     .iter()
+    //     .enumerate()
+    //     .map(|(i, &val)| val * (xs[i] - xs[j]))
+    //     .collect();
+    // }
 
     if j < original_steps * skips
       && j >= original_steps * skips / 2
       && (j - (n_wires - 1) * skips) % (3 * n_wires * skips) == 0
     {
-      println!("invalid {}", j);
       z2_evaluations = z2_evaluations
         .iter()
         .enumerate()
@@ -374,10 +366,10 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // let z_nmr_evaluations: Vec<T> = (0..precision)
   //   .map(|i| xs[(i * steps) % precision] - T::one())
   //   .collect();
-  let z_nmr_evaluations: Vec<T> = (0..precision)
-    .map(|i| xs[(i * steps) % precision] - T::one())
-    .collect();
-  let inv_z_nmr_evaluations: Vec<T> = multi_inv(&z_nmr_evaluations);
+  // let z_nmr_evaluations: Vec<T> = (0..precision)
+  //   .map(|i| xs[(i * steps) % precision] - T::one())
+  //   .collect();
+  // let inv_z_nmr_evaluations: Vec<T> = multi_inv(&z_nmr_evaluations);
   let inv_z1_evaluations: Vec<T> = multi_inv(&z1_evaluations);
   let inv_z2_evaluations: Vec<T> = multi_inv(&z2_evaluations);
   // let inv_z1_evaluations: Vec<T> = z1_dnm_evaluations
@@ -413,24 +405,24 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     .zip(&inv_z1_evaluations)
     .map(|(&q1, &z1i)| q1 * z1i)
     .collect();
-  println!("deg P1: {:?}", p_evaluations[(393 + 240 - 8) % 512]);
-  println!("deg P1: {:?}", p_evaluations[(393 + 240) % 512]);
-  println!("deg P1: {:?}", p_evaluations[393]);
-  println!("deg K1: {:?}", k_evaluations[(393 + 240) % 512]);
-  println!("deg Q1: {:?}", q1_evaluations[393]);
-  println!("deg D1: {:?}", d1_evaluations[393]);
-  println!("Z1_dnm: {:?}", z1_dnm_evaluations[393]);
-  println!("Z1_nmr^-1: {:?}", inv_z_nmr_evaluations[393]);
-  println!(
-    "Z1^-1: {:?}",
-    z1_dnm_evaluations[393] * inv_z_nmr_evaluations[393]
-  );
-  println!("deg Z1: {:?}", z1_evaluations[393]);
-  println!("deg D1*Z1: {:?}", d1_evaluations[393] * z1_evaluations[393]);
-  println!(
-    "Q1(X)/Z1(X): {:?}",
-    q1_evaluations[393] * z1_evaluations[393].invert().unwrap()
-  );
+  // println!("P1: {:?}", p_evaluations[(393 + 240 - 8) % 512]);
+  // println!("P1: {:?}", p_evaluations[(393 + 240) % 512]);
+  // println!("P1: {:?}", p_evaluations[393]);
+  // println!("K1: {:?}", k_evaluations[(393 + 240) % 512]);
+  // println!("Q1: {:?}", q1_evaluations[393]);
+  // println!("D1: {:?}", d1_evaluations[393]);
+  // println!("Z1_dnm: {:?}", z1_dnm_evaluations[393]);
+  // println!("Z1_nmr^-1: {:?}", inv_z_nmr_evaluations[393]);
+  // println!(
+  //   "Z1^-1: {:?}",
+  //   z1_dnm_evaluations[393] * inv_z_nmr_evaluations[393]
+  // );
+  // println!("Z1: {:?}", z1_evaluations[393]);
+  // println!("D1*Z1: {:?}", d1_evaluations[393] * z1_evaluations[393]);
+  // println!(
+  //   "Q1/Z1: {:?}",
+  //   q1_evaluations[393] * z1_evaluations[393].invert().unwrap()
+  // );
 
   let d2_evaluations: Vec<T> = q2_evaluations
     .iter()
@@ -438,20 +430,20 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     .map(|(&q2, &z2i)| q2 * z2i)
     .collect();
   println!("Computed D polynomial");
-  println!("deg Q2: {:?}", q2_evaluations[510]);
-  println!("deg D2: {:?}", d2_evaluations[510]);
-  println!("Z2_dnm: {:?}", z2_dnm_evaluations[510]);
-  println!("Z2_nmr^-1: {:?}", inv_z_nmr_evaluations[510]);
-  println!(
-    "Z2^-1: {:?}",
-    z2_dnm_evaluations[510] * inv_z_nmr_evaluations[510]
-  );
-  println!(
-    "Z2: {:?}",
-    (z2_dnm_evaluations[510] * inv_z_nmr_evaluations[510])
-      .invert()
-      .unwrap()
-  );
+  // println!("deg Q2: {:?}", q2_evaluations[510]);
+  // println!("deg D2: {:?}", d2_evaluations[510]);
+  // println!("Z2_dnm: {:?}", z2_dnm_evaluations[510]);
+  // println!("Z2_nmr^-1: {:?}", inv_z_nmr_evaluations[510]);
+  // println!(
+  //   "Z2^-1: {:?}",
+  //   z2_dnm_evaluations[510] * inv_z_nmr_evaluations[510]
+  // );
+  // println!(
+  //   "Z2: {:?}",
+  //   (z2_dnm_evaluations[510] * inv_z_nmr_evaluations[510])
+  //     .invert()
+  //     .unwrap()
+  // );
 
   // {
   //   let ys = &d1_evaluations;
@@ -575,7 +567,6 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let k3 = T::from_str(&mk_seed(&[m_root.clone(), b"\x03".to_vec()])).unwrap();
   let k4 = T::from_str(&mk_seed(&[m_root.clone(), b"\x04".to_vec()])).unwrap();
   let k5 = T::from_str(&mk_seed(&[m_root.clone(), b"\x05".to_vec()])).unwrap();
-  let k6 = T::from_str(&mk_seed(&[m_root.clone(), b"\x06".to_vec()])).unwrap();
 
   // Compute the linear combination. We don't even both calculating it in
   // coefficient form; we just compute the evaluations
@@ -604,9 +595,6 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
         + k5 * b_of_x * x_to_the_steps,
     );
   }
-
-  let l_poly = inv_fft(&l_evaluations, g2);
-  println!("deg L: {:?}", l_poly[64]);
 
   let l_evaluations_str: Vec<Vec<u8>> = l_evaluations
     .iter()
@@ -718,7 +706,6 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let k3 = T::from_str(&mk_seed(&[m_root.clone(), b"\x03".to_vec()])).unwrap();
   let k4 = T::from_str(&mk_seed(&[m_root.clone(), b"\x04".to_vec()])).unwrap();
   let k5 = T::from_str(&mk_seed(&[m_root.clone(), b"\x05".to_vec()])).unwrap();
-  let k6 = T::from_str(&mk_seed(&[m_root.clone(), b"\x06".to_vec()])).unwrap();
   let positions = get_pseudorandom_indices(
     &l_root.clone(),
     precision as u32,
@@ -755,9 +742,8 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // }
   // let z1_den_inv = multi_inv(&z1_den_evaluations);
   let mut z1_evaluations: Vec<T> = vec![T::one(); precision];
-  for wk in 0..(n_wires * n_constraints) {
-    let j = wk * n_wires * skips;
-    if j % (n_wires * skips) != 0 {
+  for j in 0..precision {
+    if j < original_steps * skips / 2 && j % skips == 0 && j % (n_wires * skips) != 0 {
       z1_evaluations = z1_evaluations
         .iter()
         .enumerate()
@@ -767,13 +753,26 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   }
 
   let mut z2_evaluations: Vec<T> = vec![T::one(); precision];
-  for k in 0..n_constraints {
-    let j = (original_steps * skips / 2 + (3 * k + 1) * n_wires - 1) * skips;
-    z2_evaluations = z2_evaluations
-      .iter()
-      .enumerate()
-      .map(|(i, &val)| val * (xs[i] - xs[j]))
-      .collect();
+  // for k in 0..n_constraints {
+  //   let j = ((3 * k + 2) * n_wires - 1) * skips;
+  //   z2_evaluations = z2_evaluations
+  //     .iter()
+  //     .enumerate()
+  //     .map(|(i, &val)| val * (xs[i] - xs[j]))
+  //     .collect();
+  // }
+
+  for j in 0..precision {
+    if j < original_steps * skips
+      && j >= original_steps * skips / 2
+      && (j - (n_wires - 1) * skips) % (3 * n_wires * skips) == 0
+    {
+      z2_evaluations = z2_evaluations
+        .iter()
+        .enumerate()
+        .map(|(i, &val)| val * (xs[i] - xs[j]))
+        .collect();
+    }
   }
 
   for (i, &pos) in positions.iter().enumerate() {
