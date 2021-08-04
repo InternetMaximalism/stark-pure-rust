@@ -4,8 +4,4 @@
 
 ## How to Use
 
-Generate MIMC calculation proof.
-
-```sh
-cargo run --bin mimc_stark
-```
+See [r1cs-stark](packages/r1cs-stark/README.md).
