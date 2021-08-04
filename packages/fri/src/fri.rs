@@ -6,8 +6,9 @@ use crate::fft::expand_root_of_unity;
 use crate::permuted_tree::{bin_length, get_root, merklize, mk_multi_branch, verify_multi_branch};
 use crate::poly_utils::{eval_poly_at, eval_quartic, lagrange_interp, multi_interp_4};
 use crate::utils::get_pseudorandom_indices;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum FriProof {
   Last {
     last: Vec<Vec<u8>>,
@@ -67,7 +68,7 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     let poly = lagrange_interp(&x_vals, &y_vals);
 
     for (_, &pos) in rest.iter().enumerate() {
-      assert_eq!(eval_poly_at(&poly, xs[pos]), values[pos]);
+      debug_assert_eq!(eval_poly_at(&poly, xs[pos]), values[pos]);
     }
 
     acc.push(FriProof::Last {

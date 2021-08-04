@@ -1,9 +1,3 @@
-pub mod f7;
-pub mod fp;
-pub mod ff_utils;
-pub mod utils;
-pub mod poly_utils;
-pub mod fft;
-pub mod merkle_tree;
-pub mod permuted_tree;
-pub mod fri;
+extern crate fri;
+
+pub use fri::*;

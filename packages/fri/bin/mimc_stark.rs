@@ -1,13 +1,11 @@
 use ff::PrimeField;
+use fri::ff_utils::{FromBytes, ToBytes};
+use fri::fft::{expand_root_of_unity, fft, inv_fft};
+use fri::fri::{prove_low_degree, verify_low_degree_proof, FriProof};
+use fri::permuted_tree::{get_root, merklize, mk_multi_branch, verify_multi_branch};
+use fri::poly_utils::{eval_poly_at, lagrange_interp, mul_polys, multi_inv};
+use fri::utils::{blake, get_pseudorandom_indices, is_a_power_of_2, parse_bytes_to_u64_vec};
 use num::bigint::BigUint;
-use stark_pure_rust::ff_utils::{FromBytes, ToBytes};
-use stark_pure_rust::fft::{expand_root_of_unity, fft, inv_fft};
-use stark_pure_rust::fri::{prove_low_degree, verify_low_degree_proof, FriProof};
-use stark_pure_rust::permuted_tree::{get_root, merklize, mk_multi_branch, verify_multi_branch};
-use stark_pure_rust::poly_utils::{eval_poly_at, lagrange_interp, mul_polys, multi_inv};
-use stark_pure_rust::utils::{
-  blake, get_pseudorandom_indices, is_a_power_of_2, parse_bytes_to_u64_vec,
-};
 use std::convert::TryInto;
 
 fn parse_hex_to_decimal(value: &[u8]) -> String {
