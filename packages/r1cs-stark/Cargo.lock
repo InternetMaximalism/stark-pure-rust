@@ -598,14 +598,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stark_pure_rust"
-version = "0.1.0"
-dependencies = [
- "fri",
- "r1cs_stark",
-]
-
-[[package]]
 name = "subtle"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
