@@ -1,5 +1,5 @@
 {
-  "name": "r1cs-stark",
+  "name": "r1cs_stark_node_api",
   "version": "0.1.0",
   "license": "MIT",
   "main": "dist/index.js",

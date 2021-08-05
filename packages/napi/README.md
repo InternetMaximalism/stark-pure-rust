@@ -44,7 +44,7 @@ create NodeJS or TypeScript project and add dependencies in package.json
 ```json
 {
   "dependencies": {
-    "r1cs-stark": "/path/to/this-directory"
+    "r1cs_stark_node_api": "/path/to/stark-pure-rust/packages/napi"
   }
 }
 ```
@@ -52,8 +52,8 @@ create NodeJS or TypeScript project and add dependencies in package.json
 import functions from this library
 
 ```ts
-import { prove, verify } from "r1cs-stark"; // TypeScript
-// const { prove, verify } = require("r1cs-stark"); // NodeJS
+import { prove, verify } from "r1cs_stark_node_api"; // TypeScript
+// const { prove, verify } = require("r1cs_stark_node_api"); // NodeJS
 
 function main() {
   try {
