@@ -1,0 +1,14 @@
+[package]
+name = "r1cs-stark-node-api"
+version = "0.1.0"
+license = "MIT"
+edition = "2018"
+exclude = ["index.node"]
+
+[dependencies]
+neon = { version = "0.9", default-features = false, features = ["napi-6"] }
+r1cs-stark = { version = "0.1.0", path = "../r1cs-stark" }
+
+[lib]
+crate-type = ["cdylib"]
+name = "r1cs_stark_node_api"
