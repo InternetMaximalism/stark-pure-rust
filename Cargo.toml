@@ -1,10 +1,11 @@
 [package]
-name = "stark_pure_rust"
+name = "stark-pure-rust"
 version = "0.1.0"
 edition = "2018"
 
 [dependencies]
 fri = { version = "0.1.0", path = "./packages/fri" }
-r1cs_stark = { version = "0.1.0", path = "./packages/r1cs-stark" }
+r1cs-stark = { version = "0.1.0", path = "./packages/r1cs-stark" }
 
 [lib]
+name = "stark_pure_rust"
