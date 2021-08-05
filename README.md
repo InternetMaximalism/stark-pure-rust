@@ -4,4 +4,6 @@
 
 ## How to Use
 
-See [r1cs-stark](packages/r1cs-stark/README.md).
+- [r1cs-stark](packages/r1cs-stark/README.md)
+
+- [r1cs-stark-node-api](packages/napi/README.md)

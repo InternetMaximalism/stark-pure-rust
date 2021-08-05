@@ -37,7 +37,7 @@ undefined
 true
 ```
 
-## How to Use as Library
+## How to Use
 
 create NodeJS or TypeScript project and add dependencies in package.json
 
