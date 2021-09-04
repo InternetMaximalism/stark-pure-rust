@@ -17,7 +17,7 @@ use std::path::Path;
 pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProof {
   let Header {
     field_size: _,
-    prime_number: _,
+    prime_number,
     n_public_inputs,
     n_public_outputs,
     n_private_inputs: _,
@@ -26,6 +26,14 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
     n_wires,
   } = r1cs.header;
   let Constraints(constraints) = &r1cs.constraints;
+
+  assert_eq!(
+    prime_number,
+    [
+      53438638232309528389504892708671455233,
+      64323764613183177041862057485226039389
+    ]
+  );
 
   assert_eq!(witness.len(), n_wires as usize);
   let witness: Vec<TargetFF> = witness
@@ -69,14 +77,13 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
 
     let n_wires = n_wires as usize;
 
+    let mut t = TargetFF::zero();
     for i in 0..n_coeff {
-      let mut t = TargetFF::zero();
       if i < *n_a_coeff {
         let Coefficient { wire_id, value } = &a_coefficients[i as usize];
         let wire_id = *wire_id as usize;
         let w = witness[wire_id];
-        // let c = TargetFF::from_bytes_be(u32_be_bytes_to_u8_be_bytes(*value).to_vec()).unwrap();
-        let c = TargetFF::one();
+        let c = TargetFF::from_bytes_be(u32_le_bytes_to_u8_be_bytes(*value).to_vec()).unwrap();
         // println!("w: {:?}", w);
         // println!("c: {:?}", c);
         // println!("t: {:?}", t);
@@ -95,8 +102,8 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
         let wire_id = n_wires - 1;
         let w = witness[wire_id];
         let c = TargetFF::zero();
-        // println!("w: {:?}", w);
-        // println!("c: {:?}", c);
+        // println!("w': {:?}", w);
+        // println!("c': {:?}", c);
         // println!("t: {:?}", t);
         if wire_using_list[wire_id].len() > 0 {
           wire_prev_list.insert(
@@ -111,14 +118,13 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
       }
     }
 
+    let mut t = TargetFF::zero();
     for i in 0..n_coeff {
-      let mut t = TargetFF::zero();
       if i < *n_b_coeff {
         let Coefficient { wire_id, value } = &b_coefficients[i as usize];
         let wire_id = *wire_id as usize;
         let w = witness[wire_id];
-        // let c = TargetFF::from_bytes_be(u32_be_bytes_to_u8_be_bytes(*value).to_vec()).unwrap();
-        let c = TargetFF::one();
+        let c = TargetFF::from_bytes_be(u32_le_bytes_to_u8_be_bytes(*value).to_vec()).unwrap();
         // println!("w: {:?}", w);
         // println!("c: {:?}", c);
         // println!("t: {:?}", t);
@@ -137,8 +143,8 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
         let wire_id = n_wires - 1;
         let w = witness[wire_id];
         let c = TargetFF::zero();
-        // println!("w: {:?}", w);
-        // println!("c: {:?}", c);
+        // println!("w': {:?}", w);
+        // println!("c': {:?}", c);
         // println!("t: {:?}", t);
         if wire_using_list[wire_id].len() > 0 {
           wire_prev_list.insert(
@@ -153,14 +159,13 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
       }
     }
 
+    let mut t = TargetFF::zero();
     for i in 0..n_coeff {
-      let mut t = TargetFF::zero();
       if i < *n_c_coeff {
         let Coefficient { wire_id, value } = &c_coefficients[i as usize];
         let wire_id = *wire_id as usize;
         let w = witness[wire_id];
-        // let c = TargetFF::from_bytes_be(u32_be_bytes_to_u8_be_bytes(*value).to_vec()).unwrap();
-        let c = TargetFF::one();
+        let c = TargetFF::from_bytes_be(u32_le_bytes_to_u8_be_bytes(*value).to_vec()).unwrap();
         // println!("w: {:?}", w);
         // println!("c: {:?}", c);
         // println!("t: {:?}", t);
@@ -179,8 +184,8 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
         let wire_id = n_wires - 1;
         let w = witness[wire_id];
         let c = TargetFF::zero();
-        // println!("w: {:?}", w);
-        // println!("c: {:?}", c);
+        // println!("w': {:?}", w);
+        // println!("c': {:?}", c);
         // println!("t: {:?}", t);
         if wire_using_list[wire_id].len() > 0 {
           wire_prev_list.insert(
@@ -325,8 +330,7 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
         let Coefficient { wire_id, value } = &a_coefficients[i as usize];
         let wire_id = *wire_id as usize;
         let w = witness[wire_id];
-        // let c = TargetFF::from_bytes_be(u32_be_bytes_to_u8_be_bytes(*value).to_vec()).unwrap();
-        let c = TargetFF::one();
+        let c = TargetFF::from_bytes_be(u32_le_bytes_to_u8_be_bytes(*value).to_vec()).unwrap();
         t = t + c * w;
         if wire_using_list[wire_id].len() > 0 {
           wire_prev_list.insert(
@@ -361,8 +365,7 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
         let Coefficient { wire_id, value } = &b_coefficients[i as usize];
         let wire_id = *wire_id as usize;
         let w = witness[wire_id];
-        // let c = TargetFF::from_bytes_be(u32_be_bytes_to_u8_be_bytes(*value).to_vec()).unwrap();
-        let c = TargetFF::one();
+        let c = TargetFF::from_bytes_be(u32_le_bytes_to_u8_be_bytes(*value).to_vec()).unwrap();
         t = t + c * w;
         if wire_using_list[wire_id].len() > 0 {
           wire_prev_list.insert(
@@ -397,8 +400,7 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
         let Coefficient { wire_id, value } = &c_coefficients[i as usize];
         let wire_id = *wire_id as usize;
         let w = witness[wire_id];
-        // let c = TargetFF::from_bytes_be(u32_be_bytes_to_u8_be_bytes(*value).to_vec()).unwrap();
-        let c = TargetFF::one();
+        let c = TargetFF::from_bytes_be(u32_le_bytes_to_u8_be_bytes(*value).to_vec()).unwrap();
         t = t + c * w;
         if wire_using_list[wire_id].len() > 0 {
           wire_prev_list.insert(

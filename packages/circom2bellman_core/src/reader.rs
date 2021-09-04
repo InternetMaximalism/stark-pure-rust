@@ -6,12 +6,13 @@ pub fn read_bytes(_bytes: &[u8]) -> R1csContents {
     let magic = p.get_u32_le();
     assert_eq!(u32::from_le_bytes(*b"r1cs"), magic);
     let version = Version(p.get_u32_le());
+    assert_eq!(version, Version(1));
     let n_section = NSection(p.get_u32_le());
     assert_eq!(3, n_section.0);
 
     let section_type_header = p.get_u32_le();
     assert_eq!(SectionType::HeaderSection as u32, section_type_header);
-    p.get_u64_le();
+    let _section_size = p.get_u64_le();
     let field_size = p.get_u32_le();
     let prime_number_1 = p.get_u128_le();
     let prime_number_2 = p.get_u128_le();
@@ -38,7 +39,7 @@ pub fn read_bytes(_bytes: &[u8]) -> R1csContents {
         SectionType::ConstraintSection as u32,
         section_type_constraints
     );
-    p.get_u64_le();
+    let _section_size = p.get_u64_le();
     let mut constraint_vectors = Vec::<Constraint>::new();
     for _ in 0..(n_constraints as usize) {
         let mut factors: Vec<Factor> = Vec::with_capacity(3);

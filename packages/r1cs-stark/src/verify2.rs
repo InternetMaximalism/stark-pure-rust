@@ -23,7 +23,6 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let original_steps = coefficients.len();
   assert!(original_steps <= 3 * n_constraints * n_wires);
   assert_eq!(coefficients.len(), original_steps);
-  // assert_eq!(3 * (last_coeff_list.len() - 1), original_steps);
 
   let original_steps = coefficients.len();
   assert!(original_steps <= 3 * n_constraints * n_wires);
@@ -97,14 +96,14 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     //   "{:?} {:?} {:?} {:?}",
     //   j,
     //   (j + precision - skips) % precision,
-    //   (j + last_coeff_list.len() * skips) % precision,
-    //   (j + 2 * last_coeff_list.len() * skips) % precision,
+    //   (j + original_steps / 3 * skips) % precision,
+    //   (j + 2 * original_steps / 3 * skips) % precision,
     // );
     augmented_positions.extend([
       j,
       (j + precision - skips) % precision,
-      (j + last_coeff_list.len() * skips) % precision,
-      (j + 2 * last_coeff_list.len() * skips) % precision,
+      (j + original_steps / 3 * skips) % precision,
+      (j + 2 * original_steps / 3 * skips) % precision,
     ]);
   }
 
@@ -112,18 +111,18 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let main_branch_leaves = verify_multi_branch(&m_root, &augmented_positions, &main_branches);
   let linear_comb_branch_leaves = verify_multi_branch(&l_root, &positions, &linear_comb_branches);
 
-  let mut ext_last_coeff_list: Vec<usize> = vec![];
-  ext_last_coeff_list.append(&mut last_coeff_list.to_vec());
-  ext_last_coeff_list.append(
+  let mut ext_first_coeff_list: Vec<usize> = vec![0];
+  ext_first_coeff_list.append(&mut last_coeff_list.iter().map(|i| i + 1).collect());
+  ext_first_coeff_list.append(
     &mut last_coeff_list
       .iter()
-      .map(|i| i + original_steps / 3)
+      .map(|i| i + 1 + original_steps / 3)
       .collect(),
   );
-  ext_last_coeff_list.append(
+  ext_first_coeff_list.append(
     &mut last_coeff_list
       .iter()
-      .map(|i| i + original_steps / 3 * 2)
+      .map(|i| i + 1 + original_steps / 3 * 2)
       .collect(),
   );
 
@@ -143,7 +142,8 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // let z1_den_inv = multi_inv(&z1_den_evaluations);
   let mut z1_evaluations: Vec<T> = vec![T::one(); precision];
   for j in 0..precision {
-    if j < original_steps * skips && j % skips == 0 && !ext_last_coeff_list.contains(&(j / skips)) {
+    if j < original_steps * skips && j % skips == 0 && !ext_first_coeff_list.contains(&(j / skips))
+    {
       z1_evaluations = z1_evaluations
         .iter()
         .enumerate()
@@ -227,15 +227,6 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     //   "{:03} {:?} {:?}    {:?} {:?}    {:?} {:?}",
     //   pos, p_of_x, p_of_prev_x_plus_half, p_of_x_plus_half, k_of_x_plus_half, z1_value, d1_of_x
     // );
-    // println!(
-    //   "{:?}  {:?}  {:?}  {:?}  {:?}  {:?}  {:?}",
-    //   pos, p_of_x, p_of_prev_x, k_of_x, s_of_x, d1_of_x, z1_value
-    // );
-    // println!(
-    //   "{:?}  {:?}  {:?}  {:?}  {:?}  {:?}  {:?}",
-    //   pos, p_of_x, s_of_x, permuted_s_of_x, d1_of_x, d2_of_x, d3_of_x
-    // );
-
     assert_eq!(p_of_x - p_of_prev_x - k_of_x * s_of_x, z1_value * d1_of_x);
 
     // Check second transition constraints Q2(x) = Z2(x) * D2(x)
@@ -279,7 +270,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
       let mut x_vals: Vec<T> = vec![];
       let mut y_vals: Vec<T> = vec![];
       for (k, w) in public_first_indices {
-        x_vals.push(xs[steps * w]);
+        x_vals.push(xs[skips * w]);
         y_vals.push(public_wires[*k]);
       }
       lagrange_interp(&x_vals, &y_vals)

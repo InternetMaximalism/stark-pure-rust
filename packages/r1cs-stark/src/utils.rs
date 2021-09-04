@@ -8,9 +8,20 @@ pub fn parse_hex_to_decimal(value: &[u8]) -> String {
   BigUint::from_bytes_be(value).to_str_radix(10)
 }
 
-pub fn u32_be_bytes_to_u8_be_bytes(values: [u32; 8]) -> [u8; 32] {
+// pub fn u32_be_bytes_to_u8_be_bytes(values: [u32; 8]) -> [u8; 32] {
+//   let mut output = [0u8; 32];
+//   for (i, value) in values.iter().enumerate() {
+//     for (j, &v) in value.to_be_bytes().iter().enumerate() {
+//       output[4 * i + j] = v;
+//     }
+//   }
+
+//   output
+// }
+
+pub fn u32_le_bytes_to_u8_be_bytes(values: [u32; 8]) -> [u8; 32] {
   let mut output = [0u8; 32];
-  for (i, value) in values.iter().enumerate() {
+  for (i, value) in values.iter().rev().enumerate() {
     for (j, &v) in value.to_be_bytes().iter().enumerate() {
       output[4 * i + j] = v;
     }

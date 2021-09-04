@@ -4,22 +4,23 @@ use ff::PrimeField;
 use hex::{FromHexError, ToHex};
 use num::bigint::BigUint;
 
+// #[PrimeFieldModulus = "115792089237316195423570985008687907853269984665640564039457584006405596119041"]
 #[derive(PrimeField)]
-#[PrimeFieldModulus = "115792089237316195423570985008687907853269984665640564039457584006405596119041"]
+#[PrimeFieldModulus = "21888242871839275222246405745257275088548364400416034343698204186575808495617"]
 #[PrimeFieldGenerator = "7"]
 #[PrimeFieldReprEndianness = "little"]
-pub struct Fp([u64; 5]);
+pub struct Fp([u64; 4]);
 
 impl ToHex for Fp {
   // Parse a Fp value to a hex string with 0x-prefix.
   fn encode_hex<T: FromIterator<char>>(&self) -> T {
     let repr = format!("{:?}", self.to_repr());
-    T::from_iter(repr[18..].chars())
+    T::from_iter(repr[2..].chars())
   }
 
   fn encode_hex_upper<T: FromIterator<char>>(&self) -> T {
     let repr = format!("{:?}", self.to_repr());
-    T::from_iter(repr.to_uppercase()[18..].chars())
+    T::from_iter(repr.to_uppercase()[2..].chars())
   }
 }
 

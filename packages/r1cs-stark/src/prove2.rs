@@ -21,13 +21,17 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   n_constraints: usize,
   n_wires: usize,
 ) -> StarkProof {
+  // println!("n_cons: {:?}", n_constraints);
+  // println!("n_wires: {:?}", n_wires);
+  // println!("n_public_wires: {:?}", public_wires.len());
+  // println!("last_coeff_list: {:?}", last_coeff_list);
   let original_steps = coefficients.len();
+  // println!("original_steps: {:?}", original_steps);
   assert!(original_steps <= 3 * n_constraints * n_wires);
   assert!(original_steps % 3 == 0);
   assert_eq!(witness_trace.len(), original_steps);
   assert_eq!(computational_trace.len(), original_steps);
   assert_eq!(coefficients.len(), original_steps);
-  // assert_eq!(3 * (last_coeff_list.len() - 1), original_steps);
 
   let mut log_steps = 1;
   let mut tmp_steps = original_steps - 1;
@@ -36,12 +40,37 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     log_steps += 1;
   }
   let mut steps = 2usize.pow(log_steps);
-  assert!(steps <= 2usize.pow(32));
   if steps < 8 {
     steps = 8;
   }
 
   let precision = steps * EXTENSION_FACTOR;
+  {
+    let mut ff_order_be = (T::zero() - T::one()).to_bytes_be().unwrap();
+    let mut log_max_precision = 0;
+    loop {
+      match ff_order_be.pop() {
+        Some(0) => {
+          log_max_precision += 8;
+        }
+        Some(rem) => {
+          debug_assert!(rem != 0);
+          let mut rem2 = rem;
+          while rem2 % 2 == 0 {
+            log_max_precision += 1;
+            rem2 /= 2;
+          }
+          break;
+        }
+        None => {
+          break;
+        }
+      }
+    }
+    println!("max_precision: 2^{:?}", log_max_precision);
+    assert!(precision <= 2usize.pow(log_max_precision));
+  }
+
   let mut permuted_indices = permuted_indices.to_vec();
   permuted_indices.extend(original_steps..steps);
 
@@ -60,9 +89,19 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   coefficients.extend(vec![T::zero(); steps - original_steps]);
 
   // Root of unity such that x^precision=1
-  let times_nmr = BigUint::from_bytes_be(&(T::zero() - T::one()).to_bytes_be().unwrap());
+
+  let ff_order_be = T::zero() - T::one();
+
+  let times_nmr = BigUint::from_bytes_be(&ff_order_be.to_bytes_be().unwrap());
   let times_dnm = BigUint::from_bytes_be(&precision.to_be_bytes());
+  // println!("{:?} {:?}", &times_nmr, &times_dnm);
   assert!(&times_nmr % &times_dnm == BigUint::from(0u8));
+  {
+    let times = parse_bytes_to_u64_vec(&times_nmr.to_bytes_le()); // modulus - 1
+    let unity = T::multiplicative_generator().pow_vartime(&times);
+    debug_assert_eq!(unity, T::one());
+  }
+
   let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) / precision
   let g2 = T::multiplicative_generator().pow_vartime(&times); // g2^precision == 1 mod modulus
   let xs = expand_root_of_unity(g2); // Powers of the higher-order root of unity
@@ -78,37 +117,36 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
 
   let p_polynomial = inv_fft(&computational_trace, g1); // P(X)
   let p_evaluations = fft(&p_polynomial, g2);
-  // println!("{:?}", computational_trace);
-  // println!("{:?}", p_polynomial);
-  // println!("{:?}", p_evaluations);
+  // println!("trace: {:?}", computational_trace);
+  // println!("p: {:?}", p_polynomial);
+  // println!("p: {:?}", p_evaluations);
   println!("Converted computational trace into a polynomial and low-degree extended it");
 
   let permuted_s_polynomial = inv_fft(&permuted_witness_trace, g1); // P(X)
   let permuted_s_evaluations = fft(&permuted_s_polynomial, g2);
   println!("Converted permuted computational trace into a polynomial and low-degree extended it");
 
-  // println!("{:?}", coefficients);
+  // println!("coeff: {:?}", coefficients);
   let k_polynomial = inv_fft(&coefficients, g1); // K(X)
                                                  // println!("{:?}", k_polynomial);
   let k_evaluations = fft(&k_polynomial, g2);
-  // println!("{:?}", k_evaluations);
+  // println!("k: {:?}", k_evaluations);
   println!("Converted coefficients into a polynomial and low-degree extended it");
 
-  let mut ext_last_coeff_list: Vec<usize> = vec![];
-  ext_last_coeff_list.append(&mut last_coeff_list.to_vec());
-  ext_last_coeff_list.append(
+  let mut ext_first_coeff_list: Vec<usize> = vec![0];
+  ext_first_coeff_list.append(&mut last_coeff_list.iter().map(|i| i + 1).collect());
+  ext_first_coeff_list.append(
     &mut last_coeff_list
       .iter()
-      .map(|i| i + original_steps / 3)
+      .map(|i| i + 1 + original_steps / 3)
       .collect(),
   );
-  ext_last_coeff_list.append(
+  ext_first_coeff_list.append(
     &mut last_coeff_list
       .iter()
-      .map(|i| i + original_steps / 3 * 2)
+      .map(|i| i + 1 + original_steps / 3 * 2)
       .collect(),
   );
-  println!("ext_last_coeff_list.len(): {:?}", ext_last_coeff_list.len());
 
   // Create the composed polynomial such that
   // Q(g1^j) = P(g1^(j-1)) + P(g1^(j % n_constraints))*K(g1^j) - P(g1^j)
@@ -125,24 +163,12 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     let p_of_prev_x = p_evaluations[(j + precision - skips) % precision]; // P(g1^(j-1))
     let p_of_x = p_evaluations[j]; // P(g1^j)
 
-    q1_evaluations.push(p_of_x - p_of_prev_x - k_of_x * s_of_x);
+    let q1_of_x = p_of_x - p_of_prev_x - k_of_x * s_of_x;
+    q1_evaluations.push(q1_of_x);
 
-    // if j == 50 {
-    //   println!(
-    //     "{:?} {:?}    {:?} {:?}    {:?}",
-    //     p_of_x,
-    //     p_of_prev_x_plus_half,
-    //     p_of_x_plus_half,
-    //     k_of_x_plus_half,
-    //     p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x
-    //   );
-    // }
-
-    // if (p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x == T::zero()) {
-    //   println!("valid {}", j);
-    // }
-
-    if j < original_steps * skips && j % skips == 0 && !ext_last_coeff_list.contains(&(j / skips)) {
+    if j < original_steps * skips && j % skips == 0 && !ext_first_coeff_list.contains(&(j / skips))
+    {
+      debug_assert_eq!(q1_of_x, T::zero());
       z1_evaluations = z1_evaluations
         .iter()
         .enumerate()
@@ -162,21 +188,16 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let mut q2_evaluations = vec![];
   for j in 0..precision {
     let j1 = j;
-    let j2 = (j1 + last_coeff_list.len() * skips) % precision;
-    let j3 = (j2 + last_coeff_list.len() * skips) % precision;
+    let j2 = (j1 + original_steps / 3 * skips) % precision;
+    let j3 = (j2 + original_steps / 3 * skips) % precision;
     let a_eval = p_evaluations[j1];
     let b_eval = p_evaluations[j2];
     let c_eval = p_evaluations[j3];
-    q2_evaluations.push(c_eval - a_eval * b_eval);
-
-    // if j % skips == 0
-    // // c_eval == a_eval * b_eval
-    // {
-    //   println!("{:03} {:?} {:?}    {:?}", j, a_eval, b_eval, c_eval);
-    // }
+    let q2_of_x = c_eval - a_eval * b_eval;
+    q2_evaluations.push(q2_of_x);
 
     if j < original_steps * skips && j % skips == 0 && last_coeff_list.contains(&(j / skips)) {
-      // println!("{:?} {:?}", j, c_eval - a_eval * b_eval);
+      debug_assert_eq!(q2_of_x, T::zero());
       z2_evaluations = z2_evaluations
         .iter()
         .enumerate()
@@ -239,9 +260,9 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let mut q3_evaluations = vec![];
   for j in 0..precision {
     // A(j) * val_dnm = A(j - 1) * val_nmr
-    q3_evaluations.push(
-      a_evaluations[j] - a_evaluations[(j + precision - steps) % precision] * v_evaluations[j],
-    );
+    let q3_of_x =
+      a_evaluations[j] - a_evaluations[(j + precision - steps) % precision] * v_evaluations[j];
+    q3_evaluations.push(q3_of_x);
   }
 
   let mut sparse_z3_nmr = HashMap::new();
@@ -298,13 +319,13 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     .map(|(&q1, &z1i)| q1 * z1i)
     .collect();
 
-  // println!("P1: {:?}", p_evaluations[59]);
-  // println!("P1: {:?}", p_evaluations[51]);
-  // println!("K1: {:?}", k_evaluations[59]);
-  // println!("S: {:?}", s_evaluations[59]);
-  // println!("Q1: {:?}", q1_evaluations[59]);
-  // println!("Z1: {:?}", z1_evaluations[59]);
-  // println!("D1: {:?}", d1_evaluations[59]);
+  // println!("P1: {:?}", p_evaluations[26]);
+  // println!("P1: {:?}", p_evaluations[18]);
+  // println!("K1: {:?}", k_evaluations[26]);
+  // println!("S: {:?}", s_evaluations[26]);
+  // println!("Q1: {:?}", q1_evaluations[26]);
+  // println!("Z1: {:?}", z1_evaluations[26]);
+  // println!("D1: {:?}", d1_evaluations[26]);
   // println!("Z1_dnm: {:?}", z1_dnm_evaluations[393]);
   // println!("Z1_nmr^-1: {:?}", inv_z_nmr_evaluations[393]);
   // println!(
@@ -371,7 +392,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     let mut x_vals: Vec<T> = vec![];
     let mut y_vals: Vec<T> = vec![];
     for (k, w) in public_first_indices {
-      x_vals.push(xs[steps * w]);
+      x_vals.push(xs[skips * w]);
       y_vals.push(public_wires[*k]);
     }
     lagrange_interp(&x_vals, &y_vals)
@@ -585,14 +606,14 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     //   "{:?} {:?} {:?} {:?}",
     //   j,
     //   (j + precision - skips) % precision,
-    //   (j + last_coeff_list.len() * skips) % precision,
-    //   (j + 2 * last_coeff_list.len() * skips) % precision,
+    //   (j + original_steps / 3 * skips) % precision,
+    //   (j + 2 * original_steps / 3 * skips) % precision,
     // );
     augmented_positions.extend([
       j,
       (j + precision - skips) % precision,
-      (j + last_coeff_list.len() * skips) % precision,
-      (j + 2 * last_coeff_list.len() * skips) % precision,
+      (j + original_steps / 3 * skips) % precision,
+      (j + 2 * original_steps / 3 * skips) % precision,
     ]);
   }
   // let branches: Vec<T> = vec![];
