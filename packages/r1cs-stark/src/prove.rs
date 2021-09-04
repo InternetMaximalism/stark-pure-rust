@@ -10,16 +10,17 @@ use num::bigint::BigUint;
 
 pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   computational_trace: &[T],
+  public_input: &[T],
+  n_coeff_list: &[usize],
   coefficients: &[T], // This argument may be good to use HashMap<usize, T> instead of Vec<T> because we can omit zero coefficients from it.
   n_constraints: usize,
   n_wires: usize,
 ) -> StarkProof {
-  let original_steps = 6 * n_constraints * n_wires;
-  assert_eq!(computational_trace.len(), original_steps);
-
   let mut constants = coefficients.to_vec();
   constants.extend(coefficients.to_vec());
-  assert_eq!(constants.len(), original_steps);
+  let original_steps = constants.len();
+  assert!(original_steps <= 6 * n_constraints * n_wires);
+  assert_eq!(computational_trace.len(), original_steps);
 
   let mut log_steps = 1;
   let mut tmp_steps = original_steps - 1;
@@ -118,8 +119,8 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let mut q2_evaluations = vec![];
   for j in 0..precision {
     let j1 = j;
-    let j2 = (j1 + n_wires * skips) % precision;
-    let j3 = (j2 + n_wires * skips) % precision;
+    let j2 = (j1 + n_coeff_list.len() * skips) % precision;
+    let j3 = (j2 + n_coeff_list.len() * skips) % precision;
     let a_eval = p_evaluations[j1];
     let b_eval = p_evaluations[j2];
     let c_eval = p_evaluations[j3];
@@ -148,7 +149,8 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
 
     if j < original_steps * skips
       && j >= original_steps * skips / 2
-      && (j - (n_wires - 1) * skips) % (3 * n_wires * skips) == 0
+      && (original_steps * skips / 2 - j) % skips == 0
+      && (n_coeff_list.contains(&(&(original_steps * skips / 2 - j) / skips)))
     {
       z2_evaluations = z2_evaluations
         .iter()
@@ -286,20 +288,19 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   //   }
   // }
 
-  // Compute interpolant of ((1, input), (x_at_last_step, output))
   let interpolant = {
     let mut x_vals = vec![];
     let mut y_vals = vec![];
     for w in 0..n_wires {
       x_vals.push(xs[w * skips]);
-      y_vals.push(computational_trace[w]);
+      y_vals.push(public_input[w]);
     }
 
     for k in 0..n_constraints {
-      let w = (3 * k + 1) * n_wires;
-      x_vals.push(xs[w * skips]);
-      y_vals.push(computational_trace[w]);
+      x_vals.push(xs[n_coeff_list[k] * skips]);
+      y_vals.push(public_input[n_coeff_list[k]]);
     }
+
     lagrange_interp(&x_vals, &y_vals)
   };
   let i_evaluations: Vec<T> = xs.iter().map(|&x| eval_poly_at(&interpolant, x)).collect();
@@ -316,7 +317,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
       .collect();
   }
   for k in 0..n_constraints {
-    let j = (3 * k + 1) * n_wires * skips;
+    let j = n_coeff_list[k] * skips;
     zb_evaluations = zb_evaluations
       .iter()
       .enumerate()
@@ -415,8 +416,8 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
       j,
       (j + half - skips) % precision,
       (j + half) % precision,
-      (j + n_wires * skips) % precision,
-      (j + 2 * n_wires * skips) % precision,
+      (j + n_wires * public_input.len() * skips) % precision,
+      (j + 2 * n_wires * public_input.len() * skips) % precision,
     ]);
   }
   // let branches: Vec<T> = vec![];

@@ -3,13 +3,13 @@
 ## How to Use
 
 ```sh
-cargo run <r1cs_file_path> <witness_json_path> <proof_json_path>
+cargo run <r1cs_file_path> <witness_file_path> <proof_json_path>
 ```
 
 For example,
 
 ```sh
-cargo run ./tests/mul_bn128.r1cs ./tests/mul_bn128_wtns_valid.json ./tests/mul_bn128_proof.json
+cargo run ./tests/mul_bn128.r1cs ./tests/mul_bn128.wtns ./tests/mul_bn128_proof.json
 ```
 
 ## API
@@ -19,13 +19,31 @@ fn sample_code() -> Result<(), std::io::Error> {
   use r1cs_stark::run::{prove_with_file_path, verify_with_file_path};
 
   let r1cs_file_path = "./tests/mul_bn128.r1cs";
-  let witness_json_path = "./tests/mul_bn128_wtns_valid.json";
+  let witness_file_path = "./tests/mul_bn128.wtns";
   let proof_json_path = "./tests/mul_bn128_proof.json";
 
   // r1cs + witness -> proof
-  prove_with_file_path(r1cs_file_path, witness_json_path, proof_json_path)?;
+  prove_with_file_path(r1cs_file_path, witness_file_path, proof_json_path)?;
 
   // r1cs + public input/output + proof -> verification result
-  verify_with_file_path(r1cs_file_path, witness_json_path, proof_json_path)?;
+  verify_with_file_path(r1cs_file_path, witness_file_path, proof_json_path)?;
 }
 ```
+
+## Format
+
+### R1CS
+
+[iden3 R1CS format](https://github.com/iden3/r1csfile/blob/master/doc/r1cs_bin_format.md)
+
+### Witness
+
+array of decimal string which is less than field size
+
+```json
+["1", "12", "3", "2", "4"]
+```
+
+## Road Map
+
+- introduce private input

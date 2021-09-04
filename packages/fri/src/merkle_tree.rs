@@ -3,7 +3,7 @@ use std::convert::TryInto;
 
 pub fn merklize(nodes: &[Vec<u8>]) -> Vec<Vec<u8>> {
   let n = nodes.len();
-  assert!(is_a_power_of_2(n.try_into().unwrap()));
+  assert!(is_a_power_of_2(n as usize));
 
   let mut nodes_clone = nodes.to_vec();
 

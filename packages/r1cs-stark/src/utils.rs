@@ -2,10 +2,21 @@ use ff::PrimeField;
 use fri::fri::FriProof;
 use fri::utils::blake;
 use num::bigint::BigUint;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 pub fn parse_hex_to_decimal(value: &[u8]) -> String {
   BigUint::from_bytes_be(value).to_str_radix(10)
+}
+
+pub fn u32_be_bytes_to_u8_be_bytes(values: [u32; 8]) -> [u8; 32] {
+  let mut output = [0u8; 32];
+  for (i, value) in values.iter().enumerate() {
+    for (j, &v) in value.to_be_bytes().iter().enumerate() {
+      output[4 * i + j] = v;
+    }
+  }
+
+  output
 }
 
 pub fn mk_seed(messages: &[Vec<u8>]) -> String {
@@ -40,7 +51,45 @@ pub fn r1cs_computational_trace<T: PrimeField>(coefficients: &[T], witness: &[T]
   computational_trace
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+// pub fn r1cs_computational_trace<T: PrimeField + FromBytes>(
+//   r1cs: &R1csContents,
+//   witness: &[T],
+// ) -> Vec<Vec<(u32, T)>> {
+//   let n_constraints = r1cs.header.n_constraints;
+//   let n_wires = r1cs.header.n_wires;
+
+//   let R1csContents {
+//     version: _,
+//     header: _,
+//     constraints: Constraints(constraints),
+//   } = r1cs;
+//   let computational_trace = vec![];
+//   for Constraint { factors } in constraints {
+//     let new_factors = vec![];
+//     for j in 0..3 {
+//       let Factor {
+//         n_coefficient,
+//         coefficients,
+//       } = factors[j];
+//       let mut acc = T::zero();
+//       let accumulations = vec![];
+//       for Coefficient { wire_id, value } in coefficients {
+//         let value = value.iter().fold(vec![], |acc, x| {
+//           acc.extend(x.to_le_bytes());
+//           acc
+//         });
+//         acc = acc + T::from_bytes_le(value).unwrap();
+//         accumulations.push((wire_id, acc))
+//       }
+
+//       computational_trace.push(accumulations);
+//     }
+//   }
+
+//   computational_trace
+// }
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct StarkProof {
   pub m_root: Vec<u8>,
   pub l_root: Vec<u8>,

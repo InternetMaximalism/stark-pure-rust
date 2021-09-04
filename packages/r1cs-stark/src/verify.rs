@@ -10,17 +10,18 @@ use num::bigint::BigUint;
 
 pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   proof: StarkProof,
-  witness: &[T],
+  public_input: &[T],
+  n_coeff_list: &[usize],
   coefficients: &[T],
   n_constraints: usize,
   n_wires: usize,
 ) -> Result<bool, String> {
-  let original_steps = 6 * n_constraints * n_wires;
-  assert_eq!(witness.len(), n_wires);
+  // assert_eq!(public_input.len(), n_wires);
 
   let mut constants = coefficients.to_vec();
   constants.extend(coefficients.to_vec());
-  assert_eq!(constants.len(), original_steps);
+  let original_steps = constants.len();
+  assert!(original_steps <= 6 * n_constraints * n_wires);
 
   let mut log_steps = 1;
   let mut tmp_steps = original_steps - 1;
@@ -127,7 +128,8 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   for j in 0..precision {
     if j < original_steps * skips
       && j >= original_steps * skips / 2
-      && (j - (n_wires - 1) * skips) % (3 * n_wires * skips) == 0
+      && (original_steps * skips / 2 - j) % skips == 0
+      && (n_coeff_list.contains(&(&(original_steps * skips / 2 - j) / skips)))
     {
       z2_evaluations = z2_evaluations
         .iter()
@@ -198,15 +200,15 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
       let mut x_vals = vec![];
       let mut y_vals = vec![];
       for w in 0..n_wires {
-        x_vals.push(xs[w * skips]);
-        y_vals.push(witness[w]);
+        x_vals.push(xs[n_coeff_list[w] * skips]);
+        y_vals.push(public_input[n_coeff_list[w]]);
       }
 
       for k in 0..n_constraints {
-        let j = (3 * k + 1) * n_wires;
-        x_vals.push(xs[j * skips]);
-        y_vals.push(witness[j % n_wires]);
+        x_vals.push(xs[n_coeff_list[k] * skips]);
+        y_vals.push(public_input[n_coeff_list[k]]);
       }
+
       lagrange_interp(&x_vals, &y_vals)
     };
 
@@ -216,7 +218,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
       zb_of_x = zb_of_x * (x - xs[j]);
     }
     for k in 0..n_constraints {
-      let j = (3 * k + 1) * n_wires * skips;
+      let j = n_coeff_list[k] * skips;
       zb_of_x = zb_of_x * (x - xs[j]);
     }
     // println!(

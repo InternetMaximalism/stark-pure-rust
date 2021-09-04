@@ -487,9 +487,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "r1cs_stark"
+name = "r1cs-stark"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "circom2bellman_core",
  "ff",
  "fri",

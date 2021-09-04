@@ -62,7 +62,8 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     } else {
       (0..values.len()).collect()
     };
-    let rest = pts.split_off(max_deg_plus_1 as usize); // pts[max_deg_plus_1..]
+
+    let rest = pts.split_off(max_deg_plus_1); // pts[max_deg_plus_1..]
     let x_vals: Vec<T> = pts.iter().map(|&pos| xs[pos]).collect();
     let y_vals: Vec<T> = pts.iter().map(|&pos| values[pos]).collect();
     let poly = lagrange_interp(&x_vals, &y_vals);
@@ -302,7 +303,9 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
     .iter()
     .map(|x| T::from_bytes_be(x.to_vec()).unwrap())
     .collect();
-  let rest = pts.split_off(max_deg_plus_1 as usize); // pts[max_deg_plus_1..]
+
+  assert!(pts.len() > max_deg_plus_1);
+  let rest = pts.split_off(max_deg_plus_1); // pts[max_deg_plus_1..]
   let x_vals: Vec<T> = pts.iter().map(|&pos| xs[pos]).collect();
   let y_vals: Vec<T> = pts.iter().map(|&pos| decoded_last_data[pos]).collect();
   let poly = lagrange_interp(&x_vals, &y_vals);
