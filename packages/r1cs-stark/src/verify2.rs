@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use crate::utils::*;
 use ff::PrimeField;
 use fri::ff_utils::{FromBytes, ToBytes};
-use fri::fft::{expand_root_of_unity, fft, inv_fft};
+use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
 use fri::fri::verify_low_degree_proof;
+use fri::multicore::Worker;
 use fri::permuted_tree::verify_multi_branch;
 use fri::poly_utils::{div_polys, eval_poly_at, lagrange_interp, sparse};
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
@@ -17,15 +18,14 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   permuted_indices: &[usize],
   last_coeff_list: &[usize],
   coefficients: &[T],
+  flags: &[T],
   n_constraints: usize,
   n_wires: usize,
 ) -> Result<bool, String> {
   let original_steps = coefficients.len();
+  println!("original_steps: {:?}", original_steps);
   assert!(original_steps <= 3 * n_constraints * n_wires);
-  assert_eq!(coefficients.len(), original_steps);
-
-  let original_steps = coefficients.len();
-  assert!(original_steps <= 3 * n_constraints * n_wires);
+  assert!(original_steps % 3 == 0);
 
   let mut log_steps = 1;
   let mut tmp_steps = original_steps - 1;
@@ -33,10 +33,15 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     tmp_steps /= 2;
     log_steps += 1;
   }
-  let steps = 2usize.pow(log_steps);
+  let mut steps = 2usize.pow(log_steps);
   assert!(steps <= 2usize.pow(32));
+  if steps < 8 {
+    steps = 8;
+  }
 
   let precision = steps * EXTENSION_FACTOR;
+  let log_precision = log_steps + LOG_EXTENSION_FACTOR as u32;
+
   let mut permuted_indices = permuted_indices.to_vec();
   permuted_indices.extend(original_steps..steps);
 
@@ -61,10 +66,36 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let xs = expand_root_of_unity(g2);
   let skips = precision / steps; // EXTENSION_FACTOR
   let g1 = xs[skips];
+  let log_order_of_g1 = log_steps as u32;
+  let log_order_of_g2 = log_precision as u32;
+  let order_of_g1 = steps;
+  let order_of_g2 = precision;
+
+  let worker = Worker::new();
 
   // Gets the polynomial representing the coefficients
   // println!("{:?}", coefficients);
-  let k_polynomial = inv_fft(&coefficients, g1);
+  // let k_polynomial = inv_fft(&coefficients, g1);
+  let mut k_polynomial = coefficients.clone();
+  inv_best_fft(&mut k_polynomial, &worker, &g1, log_order_of_g1); // K(X)
+  let mut k_evaluations = k_polynomial.clone();
+  if k_evaluations.len() < order_of_g2 {
+    let mut padding = vec![T::zero(); (order_of_g2 - k_evaluations.len()) as usize];
+    k_evaluations.append(&mut padding);
+  }
+  best_fft(&mut k_evaluations, &worker, &g2, log_order_of_g2);
+
+  let mut f_polynomial = flags.to_vec();
+  if f_polynomial.len() < order_of_g1 {
+    let mut padding = vec![T::zero(); (order_of_g1 - f_polynomial.len()) as usize];
+    f_polynomial.append(&mut padding);
+  }
+  inv_best_fft(&mut f_polynomial, &worker, &g1, log_order_of_g1); // K(X)
+  let mut f_evaluations = f_polynomial.clone();
+  if f_evaluations.len() < order_of_g2 {
+    let mut padding = vec![T::zero(); (order_of_g2 - f_evaluations.len()) as usize];
+    f_evaluations.append(&mut padding);
+  }
 
   // Verifies the low-degree proofs
   assert!(
@@ -126,6 +157,18 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
       .collect(),
   );
 
+  let mut f_polynomial = flags.to_vec();
+  if f_polynomial.len() < order_of_g1 {
+    let mut padding = vec![T::zero(); (order_of_g1 - f_polynomial.len()) as usize];
+    f_polynomial.append(&mut padding);
+  }
+  inv_best_fft(&mut f_polynomial, &worker, &g1, log_order_of_g1); // K(X)
+  let mut f_evaluations = f_polynomial.clone();
+  if f_evaluations.len() < order_of_g2 {
+    let mut padding = vec![T::zero(); (order_of_g2 - f_evaluations.len()) as usize];
+    f_evaluations.append(&mut padding);
+  }
+
   // let z1_num_evaluations: Vec<T> = (0..precision)
   //   .map(|i| xs[(i * steps) % precision] - T::one())
   //   .collect();
@@ -140,44 +183,60 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   //   }
   // }
   // let z1_den_inv = multi_inv(&z1_den_evaluations);
-  let mut z1_evaluations: Vec<T> = vec![T::one(); precision];
-  for j in 0..precision {
-    if j < original_steps * skips && j % skips == 0 && !ext_first_coeff_list.contains(&(j / skips))
-    {
-      z1_evaluations = z1_evaluations
-        .iter()
-        .enumerate()
-        .map(|(i, &val)| val * (xs[i] - xs[j]))
-        .collect();
-    }
-  }
-
-  let mut z2_evaluations: Vec<T> = vec![T::one(); precision];
-  // for k in 0..n_constraints {
-  //   let j = ((3 * k + 2) * n_wires - 1) * skips;
-  //   z2_evaluations = z2_evaluations
-  //     .iter()
-  //     .enumerate()
-  //     .map(|(i, &val)| val * (xs[i] - xs[j]))
-  //     .collect();
+  // let mut z1_evaluations: Vec<T> = vec![T::one(); precision];
+  // for j in 0..precision {
+  //   if j < original_steps * skips && j % skips == 0 && !ext_first_coeff_list.contains(&(j / skips))
+  //   {
+  //     z1_evaluations = z1_evaluations
+  //       .iter()
+  //       .enumerate()
+  //       .map(|(i, &val)| val * (xs[i] - xs[j]))
+  //       .collect();
+  //   }
   // }
-
-  for j in 0..precision {
-    if j < original_steps * skips && j % skips == 0 && last_coeff_list.contains(&(j / skips)) {
-      z2_evaluations = z2_evaluations
-        .iter()
-        .enumerate()
-        .map(|(i, &val)| val * (xs[i] - xs[j]))
-        .collect();
-    }
+  let mut sparse_z1 = HashMap::new();
+  sparse_z1.insert(0, -T::one());
+  sparse_z1.insert(steps, T::one());
+  let z1_polynomial = sparse(sparse_z1);
+  let mut z1_evaluations = z1_polynomial;
+  if z1_evaluations.len() < order_of_g2 {
+    let mut padding = vec![T::zero(); (order_of_g2 - z1_evaluations.len()) as usize];
+    z1_evaluations.append(&mut padding);
   }
+  best_fft(&mut z1_evaluations, &worker, &g2, log_order_of_g2);
+
+  // let mut z2_evaluations: Vec<T> = vec![T::one(); precision];
+  // // for k in 0..n_constraints {
+  // //   let j = ((3 * k + 2) * n_wires - 1) * skips;
+  // //   z2_evaluations = z2_evaluations
+  // //     .iter()
+  // //     .enumerate()
+  // //     .map(|(i, &val)| val * (xs[i] - xs[j]))
+  // //     .collect();
+  // // }
+
+  // for j in 0..precision {
+  //   if j < original_steps * skips && j % skips == 0 && last_coeff_list.contains(&(j / skips)) {
+  //     z2_evaluations = z2_evaluations
+  //       .iter()
+  //       .enumerate()
+  //       .map(|(i, &val)| val * (xs[i] - xs[j]))
+  //       .collect();
+  //   }
+  // }
 
   let mut sparse_z3_nmr = HashMap::new();
   sparse_z3_nmr.insert(0, -T::one());
   sparse_z3_nmr.insert(steps, T::one());
   let z3_dnm = [-T::one(), T::one()];
   let z3_polynomial = div_polys(&sparse(sparse_z3_nmr), &z3_dnm);
-  let z3_evaluations = fft(&z3_polynomial, g2);
+  // let z3_evaluations = fft(&z3_polynomial, g2);
+  let mut z3_evaluations = z3_polynomial.clone();
+  if z3_evaluations.len() < order_of_g2 {
+    let mut padding = vec![T::zero(); (order_of_g2 - z3_evaluations.len()) as usize];
+    z3_evaluations.append(&mut padding);
+  }
+  best_fft(&mut z3_evaluations, &worker, &g2, log_order_of_g2 as u32);
 
   let r1 = T::zero(); // TODO: randomize
   let r2 = T::one(); // TODO: randomize
@@ -217,7 +276,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     let p_of_x_plus_2w = T::from_bytes_be(m_branch30).unwrap();
 
     let z1_value = z1_evaluations[pos];
-    let z2_value = z2_evaluations[pos];
+    // let z2_value = z2_evaluations[pos];
     let z3_value = z3_evaluations[pos];
 
     let x = xs[pos]; // g2.pow_vartime(&parse_bytes_to_u64_vec(&pos.to_le_bytes()));
@@ -227,7 +286,15 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     //   "{:03} {:?} {:?}    {:?} {:?}    {:?} {:?}",
     //   pos, p_of_x, p_of_prev_x_plus_half, p_of_x_plus_half, k_of_x_plus_half, z1_value, d1_of_x
     // );
-    assert_eq!(p_of_x - p_of_prev_x - k_of_x * s_of_x, z1_value * d1_of_x);
+    let f = f_evaluations[pos].to_bytes_le().unwrap();
+    let f0 = if f[0] == 1 { T::one() } else { T::zero() };
+    let f1 = if f[1] == 1 { T::one() } else { T::zero() };
+    let f2 = if f[2] == 1 { T::one() } else { T::zero() };
+
+    assert_eq!(
+      f0 * (p_of_x - f1 * p_of_prev_x - k_of_x * s_of_x),
+      z1_value * d1_of_x
+    );
 
     // Check second transition constraints Q2(x) = Z2(x) * D2(x)
     // println!(
@@ -240,7 +307,10 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     //   z2_value,
     //   d2_of_x
     // );
-    assert_eq!(p_of_x_plus_2w - p_of_x * p_of_x_plus_w, z2_value * d2_of_x);
+    assert_eq!(
+      f0 * f2 * (p_of_x_plus_2w - p_of_x * p_of_x_plus_w),
+      z1_value * d2_of_x
+    );
 
     let val_nmr = r1 + r2 * T::from(pos as u64) + r3 * s_of_x;
     let val_dnm = r1 + r2 * T::from(pos as u64) + r3 * permuted_s_of_x;

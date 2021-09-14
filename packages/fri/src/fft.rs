@@ -1,3 +1,4 @@
+use crate::multicore::Worker;
 use ff::PrimeField;
 use std::convert::TryInto;
 
@@ -146,6 +147,112 @@ pub fn fft<T: PrimeField>(values: &[T], root_of_unity: T) -> Vec<T> {
   _fft(values, &roots)
 }
 
+pub fn serial_fft<T: PrimeField>(values: &mut [T], root_of_unity: &T, log_order_of_root: u32) {
+  let omega = *root_of_unity;
+  let log_n = log_order_of_root;
+
+  #[inline(always)]
+  fn bitreverse(mut n: u32, l: u32) -> u32 {
+    let mut r = 0;
+    for _ in 0..l {
+      r = (r << 1) | (n & 1);
+      n >>= 1;
+    }
+    r
+  }
+
+  let n = values.len() as u32;
+  assert_eq!(n, 1 << log_n);
+
+  for k in 0..n {
+    let rk = bitreverse(k, log_n);
+    if k < rk {
+      values.swap(rk as usize, k as usize);
+    }
+  }
+
+  let mut m = 1;
+  for _ in 0..log_n {
+    let w_m = omega.pow_vartime(&[(n / (2 * m)) as u64]);
+
+    let mut k = 0;
+    while k < n {
+      let mut w = T::one();
+      for j in 0..m {
+        let mut t = values[(k + j + m) as usize];
+        t.mul_assign(&w);
+        let mut tmp = values[(k + j) as usize];
+        tmp.sub_assign(&t);
+        values[(k + j + m) as usize] = tmp;
+        values[(k + j) as usize].add_assign(&t);
+        w.mul_assign(&w_m);
+      }
+
+      k += 2 * m;
+    }
+
+    m *= 2;
+  }
+}
+
+pub fn parallel_fft<F: PrimeField>(
+  values: &mut [F],
+  worker: &Worker,
+  omega: &F,
+  log_n: u32,
+  log_cpus: u32,
+) {
+  assert!(log_n >= log_cpus);
+
+  let num_cpus = 1 << log_cpus;
+  let log_new_n = log_n - log_cpus;
+  let mut tmp = vec![vec![F::zero(); 1 << log_new_n]; num_cpus];
+  let new_omega = omega.pow_vartime(&[num_cpus as u64]);
+
+  worker.scope(0, |scope, _| {
+    let values = &*values;
+
+    for (j, tmp) in tmp.iter_mut().enumerate() {
+      scope.spawn(move |_| {
+        // Shuffle into a sub-FFT
+        let omega_j = omega.pow_vartime(&[j as u64]); // omega^j
+        let omega_step = omega.pow_vartime(&[(j as u64) << log_new_n]); // omega^(j * 2**log_new_n)
+
+        let mut elt = F::one();
+        for i in 0..(1 << log_new_n) {
+          for s in 0..num_cpus {
+            let idx = (i + (s << log_new_n)) % (1 << log_n); // (i + s * new_n) % n
+            let mut t = values[idx];
+
+            t.mul_assign(&elt); // t *= elt
+            tmp[i].add_assign(&t); // tmp[i] += t
+            elt.mul_assign(&omega_step); // elt *= omega_step
+          }
+          elt.mul_assign(&omega_j); // elt *= omega_j
+        }
+
+        // Perform sub-FFT
+        serial_fft(tmp, &new_omega, log_new_n);
+      });
+    }
+  });
+
+  worker.scope(values.len(), |scope, chunk| {
+    let tmp = &tmp;
+
+    for (idx, value) in values.chunks_mut(chunk).enumerate() {
+      scope.spawn(move |_| {
+        let mut idx = idx * chunk;
+        let mask = (1 << log_cpus) - 1;
+        for v in value {
+          *v = tmp[idx & mask][idx >> log_cpus];
+          idx += 1;
+        }
+      });
+    }
+  });
+}
+
 #[test]
 fn test_fft() {
   use crate::f7::F7;
@@ -177,6 +284,38 @@ pub fn inv_fft<T: PrimeField>(values: &[T], root_of_unity: T) -> Vec<T> {
   _inv_fft(values, &roots_rev)
 }
 
+pub fn inv_serial_fft<T: PrimeField>(values: &mut [T], root_of_unity: &T, log_order_of_root: u32) {
+  let m: T = T::from((1 << log_order_of_root).try_into().unwrap());
+  let inv_len = m.invert().unwrap();
+  let inv_root_of_unity = root_of_unity.invert().unwrap();
+  serial_fft(values, &inv_root_of_unity, log_order_of_root);
+  for i in 0..values.len() {
+    values[i] *= inv_len;
+  }
+}
+
+pub fn inv_parallel_fft<T: PrimeField>(
+  values: &mut [T],
+  worker: &Worker,
+  root_of_unity: &T,
+  log_order_of_root: u32,
+  log_cpus: u32,
+) {
+  let m: T = T::from((1 << log_order_of_root).try_into().unwrap());
+  let inv_len = m.invert().unwrap();
+  let inv_root_of_unity = root_of_unity.invert().unwrap();
+  parallel_fft(
+    values,
+    worker,
+    &inv_root_of_unity,
+    log_order_of_root,
+    log_cpus,
+  );
+  for i in 0..values.len() {
+    values[i] *= inv_len;
+  }
+}
+
 #[test]
 fn test_inv_fft() {
   use crate::f7::F7;
@@ -191,6 +330,26 @@ fn test_inv_fft() {
   let answer: Vec<F7> = [1, 0, 2, 1, 0, 1].iter().map(|x| F7::from(*x)).collect();
   let res = inv_fft(&values, g2);
   assert_eq!(res, answer);
+}
+
+pub fn best_fft<T: PrimeField>(a: &mut [T], worker: &Worker, omega: &T, log_n: u32) {
+  let log_cpus = worker.log_num_cpus();
+
+  if log_cpus == 0 || log_n <= log_cpus {
+    serial_fft(a, omega, log_n);
+  } else {
+    parallel_fft(a, worker, omega, log_n, log_cpus);
+  }
+}
+
+pub fn inv_best_fft<T: PrimeField>(a: &mut [T], worker: &Worker, omega: &T, log_n: u32) {
+  let log_cpus = worker.log_num_cpus();
+
+  if log_cpus == 0 || log_n <= log_cpus {
+    inv_serial_fft(a, omega, log_n);
+  } else {
+    inv_parallel_fft(a, worker, omega, log_n, log_cpus);
+  }
 }
 
 pub fn mul_polys<T: PrimeField>(a: &[T], b: &[T], root_of_unity: T) -> Vec<T> {
@@ -242,7 +401,7 @@ pub fn div_polys<T: PrimeField>(a: &[T], b: &[T], root_of_unity: T) -> Vec<T> {
   }
 
   let roots_rev = roots_of_unity_rev(&roots);
-  println!("{:?}", _inv_fft(&inv_x2, &roots_rev));
+  // println!("{:?}", _inv_fft(&inv_x2, &roots_rev));
   _inv_fft(&mul_values, &roots_rev)
 }
 

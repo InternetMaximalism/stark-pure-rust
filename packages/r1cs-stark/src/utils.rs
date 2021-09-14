@@ -111,6 +111,7 @@ pub struct StarkProof {
 
 // const modulus = 2**256 - 2**32 * 351 + 1;
 // const non_residue = 7;
+pub const LOG_EXTENSION_FACTOR: usize = 3usize;
 pub const EXTENSION_FACTOR: usize = 8usize; // >= 4 (for low-degree proof)
 pub const SPOT_CHECK_SECURITY_FACTOR: usize = 80usize;
 

@@ -27,6 +27,9 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
   } = r1cs.header;
   let Constraints(constraints) = &r1cs.constraints;
 
+  let n_constraints = n_constraints as usize;
+  let n_wires = n_wires as usize;
+
   assert_eq!(
     prime_number,
     [
@@ -35,7 +38,7 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
     ]
   );
 
-  assert_eq!(witness.len(), n_wires as usize);
+  // assert_eq!(witness.len(), n_wires as usize);
   let witness: Vec<TargetFF> = witness
     .iter()
     .map(|x| TargetFF::from_bytes_be(x.to_vec()).unwrap())
@@ -204,6 +207,18 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
     last_coeff_list.push(acc_n_coeff - 1);
   }
 
+  let mut flags = vec![];
+  for k in 0..(a_coeff_list.len() + b_coeff_list.len() + c_coeff_list.len()) {
+    let f0 = 1u64;
+    let f1: u64 = if !last_coeff_list.contains(&(k % n_constraints)) {
+      1
+    } else {
+      0
+    };
+    let f2: u64 = if last_coeff_list.contains(&k) { 1 } else { 0 };
+    flags.push(TargetFF::from(f0 + f1 * 2 + f2 * 4));
+  }
+
   for wire_id in 0..(n_wires as usize) {
     if wire_using_list[wire_id].len() > 0 {
       wire_prev_list.insert(
@@ -213,22 +228,12 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
     }
   }
 
-  let wire_prev_list: Vec<(usize, usize)> = wire_prev_list
-    .iter()
-    .map(|((k, v), (prev_k, prev_v))| (k * a_trace.len() + v, prev_k * a_trace.len() + prev_v))
-    .collect();
+  // let wire_prev_list: Vec<(usize, usize)> = wire_prev_list
+  //   .iter()
+  //   .map(|((k, v), (prev_k, prev_v))| (k * a_trace.len() + v, prev_k * a_trace.len() + prev_v))
+  //   .collect();
 
-  let mut permuted_indices = vec![];
-  for w in 0..wire_prev_list.len() {
-    permuted_indices.push(
-      wire_prev_list
-        .iter()
-        .filter(|&&v| v.0 == w)
-        .collect::<Vec<_>>()[0]
-        .1,
-    );
-  }
-
+  println!("public_first_indices");
   let mut public_first_indices = vec![];
   for w in 0..public_wires.len() {
     if wire_using_list[w].len() > 0 {
@@ -257,6 +262,20 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
   // Generate the computational trace
   println!("Done generating computational trace");
 
+  println!("permuted_indices");
+  // take a long time
+  // let mut permuted_indices = vec![];
+  // for w in 0..wire_prev_list.len() {
+  //   permuted_indices.push(
+  //     wire_prev_list
+  //       .iter()
+  //       .filter(|&&v| v.0 == w)
+  //       .collect::<Vec<_>>()[0]
+  //       .1,
+  //   );
+  // }
+  let permuted_indices = (0..witness_trace.len()).collect::<Vec<_>>();
+
   mk_r1cs_proof(
     &witness_trace,
     &computational_trace,
@@ -265,8 +284,9 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
     &permuted_indices,
     &last_coeff_list,
     &coefficients,
-    n_constraints as usize,
-    n_wires as usize,
+    &flags,
+    n_constraints,
+    n_wires,
   )
 }
 
@@ -283,6 +303,9 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
     n_wires,
   } = r1cs.header;
   let Constraints(constraints) = &r1cs.constraints;
+
+  let n_constraints = n_constraints as usize;
+  let n_wires = n_wires as usize;
 
   type TargetFF = Fp; // TODO: Use r1cs.header.field_size.
 
@@ -466,6 +489,18 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
     }
   }
 
+  let mut flags = vec![];
+  for k in 0..(a_coeff_list.len() + b_coeff_list.len() + c_coeff_list.len()) {
+    let f0 = 1u64;
+    let f1: u64 = if !last_coeff_list.contains(&(k % n_constraints)) {
+      1
+    } else {
+      0
+    };
+    let f2: u64 = if last_coeff_list.contains(&k) { 1 } else { 0 };
+    flags.push(TargetFF::from(f0 + f1 * 2 + f2 * 4));
+  }
+
   let mut witness_trace = vec![];
   witness_trace.extend(a_wit_list);
   witness_trace.extend(b_wit_list);
@@ -489,8 +524,9 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
     &permuted_indices,
     &last_coeff_list,
     &coefficients,
-    n_constraints as usize,
-    n_wires as usize
+    &flags,
+    n_constraints,
+    n_wires
   )
   .unwrap());
   println!("Done proof verification");
