@@ -3,6 +3,9 @@ use std::convert::TryInto;
 // use simple_error::SimpleError;
 use crate::ff_utils::{FromBytes, ToBytes};
 use crate::fft::expand_root_of_unity;
+// use crate::merkle_tree2::{
+//   mk_multi_branch, verify_multi_branch, ParallelMerkleTree, SerialMerkleTree,
+// };
 use crate::permuted_tree::{bin_length, get_root, merklize, mk_multi_branch, verify_multi_branch};
 use crate::poly_utils::{eval_poly_at, eval_quartic, lagrange_interp, multi_interp_4};
 use crate::utils::get_pseudorandom_indices;

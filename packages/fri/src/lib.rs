@@ -3,7 +3,7 @@ pub mod ff_utils;
 pub mod fft;
 pub mod fp;
 pub mod fri;
-pub mod merkle_tree;
+pub mod merkle_tree2;
 pub mod multicore;
 pub mod permuted_tree;
 pub mod poly_utils;
