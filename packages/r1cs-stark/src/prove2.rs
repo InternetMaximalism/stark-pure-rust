@@ -5,8 +5,9 @@ use ff::PrimeField;
 use fri::ff_utils::{FromBytes, ToBytes};
 use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
 use fri::fri::prove_low_degree;
+use fri::merkle_tree2::{mk_multi_branch, BlakeDigest, MerkleTree, PermutedParallelMerkleTree};
 use fri::multicore::Worker;
-use fri::permuted_tree::{get_root, merklize, mk_multi_branch};
+// use fri::permuted_tree::{get_root, merklize, mk_multi_branch};
 use fri::poly_utils::{div_polys, eval_poly_at, lagrange_interp, multi_inv, sparse};
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
 use num::bigint::BigUint;
@@ -630,7 +631,13 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     .collect();
   println!("Compute Merkle tree");
 
-  let m_tree = merklize(&poly_evaluations_str);
+  let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+    PermutedParallelMerkleTree::new(worker);
+  m_tree.update(poly_evaluations_str);
+  // println!("m_root: {:?}", m_tree.root());
+  let worker = m_tree.release_worker().unwrap();
+
+  // let m_tree = merklize(&poly_evaluations_str);
   // let poly_evaluations_leaves: Vec<[u8; 32]> = poly_evaluations_str
   //   .iter()
   //   .map(|v| {
@@ -643,24 +650,25 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   //   .collect();
   // let m_tree: MerkleTree<[u8; 32], ExampleAlgorithm, VecStore<_>> =
   //   MerkleTree::try_from_iter(poly_evaluations_leaves.into_iter().map(Ok)).unwrap();
-  let m_root = get_root(&m_tree);
+  // let m_root = get_root(&m_tree);
+  let m_root = m_tree.root();
   println!("Computed hash root");
 
   // Based on the hashes of P, D and B, we select a random linear combination
   // of P * x^steps, P, B * x^steps, B and D, and prove the low-degreeness of that,
   // instead of proving the low-degreeness of P, B and D separately
   let k0 = T::one();
-  let k1 = T::from_str(&mk_seed(&[m_root.to_vec(), b"\x01".to_vec()])).unwrap();
-  let k2 = T::from_str(&mk_seed(&[m_root.to_vec(), b"\x02".to_vec()])).unwrap();
-  let k3 = T::from_str(&mk_seed(&[m_root.to_vec(), b"\x03".to_vec()])).unwrap();
-  let k4 = T::from_str(&mk_seed(&[m_root.to_vec(), b"\x04".to_vec()])).unwrap();
-  let k5 = T::from_str(&mk_seed(&[m_root.to_vec(), b"\x05".to_vec()])).unwrap();
-  let k6 = T::from_str(&mk_seed(&[m_root.to_vec(), b"\x06".to_vec()])).unwrap();
-  let k7 = T::from_str(&mk_seed(&[m_root.to_vec(), b"\x07".to_vec()])).unwrap();
-  let k8 = T::from_str(&mk_seed(&[m_root.to_vec(), b"\x08".to_vec()])).unwrap();
-  let k9 = T::from_str(&mk_seed(&[m_root.to_vec(), b"\x09".to_vec()])).unwrap();
-  let k10 = T::from_str(&mk_seed(&[m_root.to_vec(), b"\x0a".to_vec()])).unwrap();
-  let k11 = T::from_str(&mk_seed(&[m_root.to_vec(), b"\x0b".to_vec()])).unwrap();
+  let k1 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x01".to_vec()])).unwrap();
+  let k2 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x02".to_vec()])).unwrap();
+  let k3 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x03".to_vec()])).unwrap();
+  let k4 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x04".to_vec()])).unwrap();
+  let k5 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x05".to_vec()])).unwrap();
+  let k6 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x06".to_vec()])).unwrap();
+  let k7 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x07".to_vec()])).unwrap();
+  let k8 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x08".to_vec()])).unwrap();
+  let k9 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x09".to_vec()])).unwrap();
+  let k10 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x0a".to_vec()])).unwrap();
+  let k11 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x0b".to_vec()])).unwrap();
 
   // Compute the linear combination. We don't even both calculating it in
   // coefficient form; we just compute the evaluations
@@ -727,7 +735,12 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     .iter()
     .map(|x| x.to_bytes_be().unwrap())
     .collect();
-  let l_m_tree = merklize(&l_evaluations_str);
+  // let l_m_tree = merklize(&l_evaluations_str);
+  let mut l_m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+    PermutedParallelMerkleTree::new(worker);
+  l_m_tree.update(l_evaluations_str);
+  // println!("l_m_root: {:?}", l_m_tree.root());
+  // let worker = l_m_tree.release_worker().unwrap();
 
   // let l_evaluations_leaves: Vec<[u8; 32]> = l_evaluations_str
   //   .iter()
@@ -746,7 +759,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // Do some spot checks of the Merkle tree at pseudo-random coordinates, excluding
   // multiples of `skips`
   let positions = get_pseudorandom_indices(
-    &get_root(&l_m_tree),
+    l_m_tree.root().as_ref(),
     precision as u32,
     SPOT_CHECK_SECURITY_FACTOR,
     skips as u32,
@@ -781,11 +794,11 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // println!("{:?}", positions);
 
   StarkProof {
-    m_root: get_root(&m_tree).clone(),
-    l_root: get_root(&l_m_tree).clone(),
+    m_root: m_tree.root(),
+    l_root: l_m_tree.root(),
     main_branches: mk_multi_branch(&m_tree, &augmented_positions),
     linear_comb_branches: mk_multi_branch(&l_m_tree, &positions),
-    fri_proof: fri_proof,
+    fri_proof,
   }
   // println!("STARK computed in %.4f sec" % (time.time() - start_time))
 }

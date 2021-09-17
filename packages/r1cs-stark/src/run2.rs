@@ -5,7 +5,7 @@ use circom2bellman_core::{read_bytes, Coefficient, Constraints, Factor, Header, 
 use ff::Field;
 use fri::ff_utils::FromBytes;
 use fri::fp::Fp;
-use fri::fri::fri_proof_bin_length;
+// use fri::fri::fri_proof_bin_length;
 use fri::merkle_tree::bin_length;
 use num::bigint::BigUint;
 use std::cmp::max;
@@ -263,7 +263,7 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
   println!("Done generating computational trace");
 
   println!("permuted_indices");
-  // take a long time
+  // TODO: take a long time
   // let mut permuted_indices = vec![];
   // for w in 0..wire_prev_list.len() {
   //   permuted_indices.push(
@@ -290,7 +290,6 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
   )
 }
 
-// TODO: Input boundary conditions instead of witness.
 fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkProof) {
   let Header {
     field_size: _,
@@ -555,21 +554,21 @@ pub fn prove_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
   let mut file = File::create(proof_json_path)?;
   write!(file, "{}", serialized_proof)?;
 
-  let StarkProof {
-    m_root: _,
-    l_root: _,
-    main_branches,
-    linear_comb_branches,
-    fri_proof,
-  } = &proof;
-  let len1 = bin_length(main_branches) + bin_length(linear_comb_branches);
-  let len2 = fri_proof_bin_length(fri_proof);
-  println!(
-    "Approx proof length: {} (branches), {} (FRI proof), {} (total)",
-    len1,
-    len2,
-    len1 + len2
-  );
+  // let StarkProof {
+  //   m_root: _,
+  //   l_root: _,
+  //   main_branches,
+  //   linear_comb_branches,
+  //   fri_proof,
+  // } = &proof;
+  // let len1 = bin_length(main_branches) + bin_length(linear_comb_branches);
+  // let len2 = fri_proof_bin_length(fri_proof);
+  // println!(
+  //   "Approx proof length: {} (branches), {} (FRI proof), {} (total)",
+  //   len1,
+  //   len2,
+  //   len1 + len2
+  // );
 
   Ok(())
 }

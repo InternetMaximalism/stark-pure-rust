@@ -5,8 +5,9 @@ use ff::PrimeField;
 use fri::ff_utils::{FromBytes, ToBytes};
 use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
 use fri::fri::verify_low_degree_proof;
+use fri::merkle_tree2::verify_multi_branch;
 use fri::multicore::Worker;
-use fri::permuted_tree::verify_multi_branch;
+// use fri::permuted_tree::verify_multi_branch;
 use fri::poly_utils::{div_polys, eval_poly_at, lagrange_interp, sparse};
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
 use num::bigint::BigUint;
@@ -104,19 +105,19 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
 
   // Performs the spot checks
   let k0 = T::one();
-  let k1 = T::from_str(&mk_seed(&[m_root.clone(), b"\x01".to_vec()])).unwrap();
-  let k2 = T::from_str(&mk_seed(&[m_root.clone(), b"\x02".to_vec()])).unwrap();
-  let k3 = T::from_str(&mk_seed(&[m_root.clone(), b"\x03".to_vec()])).unwrap();
-  let k4 = T::from_str(&mk_seed(&[m_root.clone(), b"\x04".to_vec()])).unwrap();
-  let k5 = T::from_str(&mk_seed(&[m_root.clone(), b"\x05".to_vec()])).unwrap();
-  let k6 = T::from_str(&mk_seed(&[m_root.clone(), b"\x06".to_vec()])).unwrap();
-  let k7 = T::from_str(&mk_seed(&[m_root.clone(), b"\x07".to_vec()])).unwrap();
-  let k8 = T::from_str(&mk_seed(&[m_root.clone(), b"\x08".to_vec()])).unwrap();
-  let k9 = T::from_str(&mk_seed(&[m_root.clone(), b"\x09".to_vec()])).unwrap();
-  let k10 = T::from_str(&mk_seed(&[m_root.clone(), b"\x0a".to_vec()])).unwrap();
-  let k11 = T::from_str(&mk_seed(&[m_root.clone(), b"\x0b".to_vec()])).unwrap();
+  let k1 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x01".to_vec()])).unwrap();
+  let k2 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x02".to_vec()])).unwrap();
+  let k3 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x03".to_vec()])).unwrap();
+  let k4 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x04".to_vec()])).unwrap();
+  let k5 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x05".to_vec()])).unwrap();
+  let k6 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x06".to_vec()])).unwrap();
+  let k7 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x07".to_vec()])).unwrap();
+  let k8 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x08".to_vec()])).unwrap();
+  let k9 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x09".to_vec()])).unwrap();
+  let k10 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x0a".to_vec()])).unwrap();
+  let k11 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x0b".to_vec()])).unwrap();
   let positions = get_pseudorandom_indices(
-    &l_root.clone(),
+    l_root.as_ref(),
     precision as u32,
     SPOT_CHECK_SECURITY_FACTOR,
     skips as u32,
@@ -139,8 +140,11 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   }
 
   // println!("{:?}", positions);
-  let main_branch_leaves = verify_multi_branch(&m_root, &augmented_positions, &main_branches);
-  let linear_comb_branch_leaves = verify_multi_branch(&l_root, &positions, &linear_comb_branches);
+  let main_branches = main_branches;
+  let main_branch_leaves =
+    verify_multi_branch(&m_root, &augmented_positions, main_branches).unwrap();
+  let linear_comb_branch_leaves =
+    verify_multi_branch(&l_root, &positions, linear_comb_branches).unwrap();
 
   let mut ext_first_coeff_list: Vec<usize> = vec![0];
   ext_first_coeff_list.append(&mut last_coeff_list.iter().map(|i| i + 1).collect());

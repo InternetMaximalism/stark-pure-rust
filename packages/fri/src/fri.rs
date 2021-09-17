@@ -3,10 +3,11 @@ use std::convert::TryInto;
 // use simple_error::SimpleError;
 use crate::ff_utils::{FromBytes, ToBytes};
 use crate::fft::expand_root_of_unity;
-// use crate::merkle_tree2::{
-//   mk_multi_branch, verify_multi_branch, ParallelMerkleTree, SerialMerkleTree,
-// };
-use crate::permuted_tree::{bin_length, get_root, merklize, mk_multi_branch, verify_multi_branch};
+use crate::merkle_tree2::{
+  mk_multi_branch, verify_multi_branch, BlakeDigest, MerkleTree, PermutedParallelMerkleTree, Proof,
+};
+use crate::multicore::Worker;
+// use crate::permuted_tree::{bin_length, get_root, merklize, mk_multi_branch, verify_multi_branch};
 use crate::poly_utils::{eval_poly_at, eval_quartic, lagrange_interp, multi_interp_4};
 use crate::utils::get_pseudorandom_indices;
 use serde::{Deserialize, Serialize};
@@ -17,9 +18,9 @@ pub enum FriProof {
     last: Vec<Vec<u8>>,
   },
   Middle {
-    root2: Vec<u8>,
-    column_branches: Vec<Vec<Vec<u8>>>,
-    poly_branches: Vec<Vec<Vec<u8>>>,
+    root2: BlakeDigest,
+    column_branches: Vec<Proof<Vec<u8>, BlakeDigest>>,
+    poly_branches: Vec<Proof<Vec<u8>, BlakeDigest>>,
   },
 }
 
@@ -29,8 +30,10 @@ pub fn prove_low_degree<T: PrimeField + FromBytes + ToBytes>(
   max_deg_plus_1: usize,
   exclude_multiples_of: u32,
 ) -> Vec<FriProof> {
+  let worker = Worker::new();
   prove_low_degree_rec(
     vec![],
+    worker,
     values,
     root_of_unity,
     max_deg_plus_1,
@@ -40,6 +43,7 @@ pub fn prove_low_degree<T: PrimeField + FromBytes + ToBytes>(
 
 fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   mut acc: Vec<FriProof>,
+  worker: Worker,
   values: &[T],
   root_of_unity: T,
   max_deg_plus_1: usize,
@@ -88,10 +92,14 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   // Put the values into a Merkle tree. This is the root that the
   // proof will be checked against
   let encoded_values: Vec<Vec<u8>> = values.iter().map(|x| x.to_bytes_be().unwrap()).collect();
-  let m = merklize(&encoded_values);
+  // let m = merklize(&encoded_values);
+  let mut m: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+    PermutedParallelMerkleTree::new(worker);
+  m.update(encoded_values);
+  let worker = m.release_worker().unwrap();
 
   // Select a pseudo-random x coordinate
-  let special_x = T::from_bytes_be(get_root(&m)).unwrap();
+  let special_x = T::from_bytes_be(m.root().as_ref().to_vec()).unwrap();
 
   // Calculate the "column" at that x coordinate
   // (see https://vitalik.ca/general/2017/11/22/starks_part_2.html)
@@ -122,11 +130,21 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     .map(|p| eval_quartic(*p, special_x))
     .collect();
   let encoded_column: Vec<Vec<u8>> = column.iter().map(|p| p.to_bytes_be().unwrap()).collect();
-  let m2 = merklize(&encoded_column);
-  let m2_root = get_root(&m2).clone();
+  let mut m2: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+    PermutedParallelMerkleTree::new(worker);
+  m2.update(encoded_column);
+  let worker = m2.release_worker().unwrap();
+  let m2_root = m2.root();
+  // let m2 = merklize(&encoded_column);
+  // let m2_root = get_root(&m2).clone();
 
   // Pseudo-randomly select y indices to sample
-  let ys = get_pseudorandom_indices(&m2_root, column.len() as u32, 40, exclude_multiples_of);
+  let ys = get_pseudorandom_indices(
+    m2_root.as_ref(),
+    column.len() as u32,
+    40,
+    exclude_multiples_of,
+  );
 
   // Compute the positions for the values in the polynomial
   let poly_positions: Vec<usize> = ys
@@ -152,6 +170,7 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   // Recurse...
   prove_low_degree_rec(
     acc,
+    worker,
     &column,
     root_of_unity.pow_vartime(&[4u64]),
     max_deg_plus_1 / 4,
@@ -160,13 +179,15 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
 }
 
 pub fn verify_low_degree_proof<T: PrimeField + FromBytes + ToBytes>(
-  merkle_root: Vec<u8>,
+  merkle_root: BlakeDigest,
   root_of_unity: T,
   proof: &[FriProof],
   max_deg_plus_1: usize,
   exclude_multiples_of: u32,
 ) -> Result<bool, &str> {
+  let worker = Worker::new();
   verify_low_degree_proof_rec(
+    worker,
     merkle_root,
     root_of_unity,
     proof,
@@ -176,7 +197,8 @@ pub fn verify_low_degree_proof<T: PrimeField + FromBytes + ToBytes>(
 }
 
 pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
-  mut merkle_root: Vec<u8>,
+  worker: Worker,
+  mut merkle_root: BlakeDigest,
   mut root_of_unity: T,
   proof: &[FriProof],
   mut max_deg_plus_1: usize,
@@ -201,7 +223,7 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
 
   // Verify the recursive components of the proof
   for prf in proof.iter().take(proof.len() - 1) {
-    let (root2, column_branches, poly_branches) = match prf {
+    let (root2, column_branches, poly_branches) = match prf.clone() {
       FriProof::Middle {
         root2,
         column_branches,
@@ -214,11 +236,11 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
     println!("Verifying degree <= {:?}", max_deg_plus_1);
 
     // Calculate the pseudo-random x coordinate
-    let special_x = T::from_bytes_be(merkle_root.to_vec()).unwrap();
+    let special_x = T::from_bytes_be(merkle_root.as_ref().to_vec()).unwrap();
 
     // Calculate the pseudo-randomly sampled y indices
     let ys = get_pseudorandom_indices(
-      &root2,
+      root2.as_ref(),
       (rou_deg / 4).try_into().unwrap(),
       40,
       exclude_multiples_of,
@@ -234,7 +256,7 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
     }
 
     // Verify Merkle branches
-    let column_values = verify_multi_branch(root2, &ys, column_branches);
+    let column_values = verify_multi_branch(&root2, &ys, column_branches);
     let poly_values = verify_multi_branch(&merkle_root, &poly_positions, poly_branches);
 
     // For each y coordinate, get the x coordinates on the row, the values on
@@ -254,10 +276,10 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
       // The values from the original polynomial
       let mut row = [T::zero(); 4];
       for j in 0..4 {
-        row[j] = T::from_bytes_be(poly_values[i * 4 + j].clone()).unwrap();
+        row[j] = T::from_bytes_be(poly_values.clone().unwrap()[i * 4 + j].clone()).unwrap();
       }
       rows.push(row);
-      column_vals.push(T::from_bytes_be(column_values[i].clone()).unwrap());
+      column_vals.push(T::from_bytes_be(column_values.clone().unwrap()[i].clone()).unwrap());
     }
 
     // Verify for each selected y coordinate that the four points from the
@@ -284,13 +306,16 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
 
   // Check the Merkle root matches up
   let last_data = if let Some(FriProof::Last { last }) = proof.last() {
-    last
+    last.to_vec()
   } else {
     return Err("The last element of FRI proofs must be FriProof::Last.");
     // return Err(SimpleError::new("The last element of FRI proofs must be FriProof::Last."));
   };
-  let m_tree = merklize(last_data);
-  assert_eq!(get_root(&m_tree), merkle_root);
+  let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+    PermutedParallelMerkleTree::new(worker);
+  m_tree.update(last_data.clone());
+  // let m_tree = merklize(last_data);
+  assert_eq!(m_tree.root(), merkle_root);
 
   // Check the degree of the last_data
   let xs = expand_root_of_unity(root_of_unity);
@@ -320,16 +345,16 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
   Ok(true)
 }
 
-pub fn fri_proof_bin_length(fri_proof: &[FriProof]) -> usize {
-  fri_proof
-    .iter()
-    .map(|x| match x {
-      FriProof::Middle {
-        root2: _,
-        column_branches,
-        poly_branches,
-      } => 32 + bin_length(column_branches) + bin_length(poly_branches),
-      FriProof::Last { last } => last.iter().map(|x| x.len()).sum(),
-    })
-    .sum()
-}
+// pub fn fri_proof_bin_length(fri_proof: &[FriProof]) -> usize {
+//   fri_proof
+//     .iter()
+//     .map(|x| match x {
+//       FriProof::Middle {
+//         root2: _,
+//         column_branches,
+//         poly_branches,
+//       } => 32 + bin_length(column_branches) + bin_length(poly_branches),
+//       FriProof::Last { last } => last.iter().map(|x| x.len()).sum(),
+//     })
+//     .sum()
+// }

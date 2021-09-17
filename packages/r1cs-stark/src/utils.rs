@@ -1,6 +1,7 @@
 use ff::PrimeField;
-use fri::fri::FriProof;
+use fri::merkle_tree2::Proof;
 use fri::utils::blake;
+use fri::{fri::FriProof, merkle_tree2::BlakeDigest};
 use num::bigint::BigUint;
 use serde::{Deserialize, Serialize};
 
@@ -102,10 +103,10 @@ pub fn r1cs_computational_trace<T: PrimeField>(coefficients: &[T], witness: &[T]
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct StarkProof {
-  pub m_root: Vec<u8>,
-  pub l_root: Vec<u8>,
-  pub main_branches: Vec<Vec<Vec<u8>>>,
-  pub linear_comb_branches: Vec<Vec<Vec<u8>>>,
+  pub m_root: BlakeDigest,
+  pub l_root: BlakeDigest,
+  pub main_branches: Vec<Proof<Vec<u8>, BlakeDigest>>,
+  pub linear_comb_branches: Vec<Proof<Vec<u8>, BlakeDigest>>,
   pub fri_proof: Vec<FriProof>,
 }
 
