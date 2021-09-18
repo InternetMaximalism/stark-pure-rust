@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::utils::*;
 use ff::PrimeField;
-use fri::ff_utils::{FromBytes, ToBytes};
+use ff_utils::ff_utils::{FromBytes, ToBytes};
 use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
 use fri::fri::prove_low_degree;
 use fri::merkle_tree2::{mk_multi_branch, BlakeDigest, MerkleTree, PermutedParallelMerkleTree};
@@ -632,10 +632,9 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   println!("Compute Merkle tree");
 
   let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
-    PermutedParallelMerkleTree::new(worker);
+    PermutedParallelMerkleTree::new(&worker);
   m_tree.update(poly_evaluations_str);
   // println!("m_root: {:?}", m_tree.root());
-  let worker = m_tree.release_worker().unwrap();
 
   // let m_tree = merklize(&poly_evaluations_str);
   // let poly_evaluations_leaves: Vec<[u8; 32]> = poly_evaluations_str
@@ -737,7 +736,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     .collect();
   // let l_m_tree = merklize(&l_evaluations_str);
   let mut l_m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
-    PermutedParallelMerkleTree::new(worker);
+    PermutedParallelMerkleTree::new(&worker);
   l_m_tree.update(l_evaluations_str);
   // println!("l_m_root: {:?}", l_m_tree.root());
   // let worker = l_m_tree.release_worker().unwrap();

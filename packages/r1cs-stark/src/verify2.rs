@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::utils::*;
 use ff::PrimeField;
-use fri::ff_utils::{FromBytes, ToBytes};
+use ff_utils::ff_utils::{FromBytes, ToBytes};
 use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
 use fri::fri::verify_low_degree_proof;
 use fri::merkle_tree2::verify_multi_branch;

@@ -1,12 +1,12 @@
 use ff::PrimeField;
 use std::convert::TryInto;
 // use simple_error::SimpleError;
-use crate::ff_utils::{FromBytes, ToBytes};
 use crate::fft::expand_root_of_unity;
 use crate::merkle_tree2::{
   mk_multi_branch, verify_multi_branch, BlakeDigest, MerkleTree, PermutedParallelMerkleTree, Proof,
 };
 use crate::multicore::Worker;
+use ff_utils::ff_utils::{FromBytes, ToBytes};
 // use crate::permuted_tree::{bin_length, get_root, merklize, mk_multi_branch, verify_multi_branch};
 use crate::poly_utils::{eval_poly_at, eval_quartic, lagrange_interp, multi_interp_4};
 use crate::utils::get_pseudorandom_indices;
@@ -94,9 +94,8 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   let encoded_values: Vec<Vec<u8>> = values.iter().map(|x| x.to_bytes_be().unwrap()).collect();
   // let m = merklize(&encoded_values);
   let mut m: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
-    PermutedParallelMerkleTree::new(worker);
+    PermutedParallelMerkleTree::new(&worker);
   m.update(encoded_values);
-  let worker = m.release_worker().unwrap();
 
   // Select a pseudo-random x coordinate
   let special_x = T::from_bytes_be(m.root().as_ref().to_vec()).unwrap();
@@ -131,9 +130,8 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     .collect();
   let encoded_column: Vec<Vec<u8>> = column.iter().map(|p| p.to_bytes_be().unwrap()).collect();
   let mut m2: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
-    PermutedParallelMerkleTree::new(worker);
+    PermutedParallelMerkleTree::new(&worker);
   m2.update(encoded_column);
-  let worker = m2.release_worker().unwrap();
   let m2_root = m2.root();
   // let m2 = merklize(&encoded_column);
   // let m2_root = get_root(&m2).clone();
@@ -312,7 +310,7 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
     // return Err(SimpleError::new("The last element of FRI proofs must be FriProof::Last."));
   };
   let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
-    PermutedParallelMerkleTree::new(worker);
+    PermutedParallelMerkleTree::new(&worker);
   m_tree.update(last_data.clone());
   // let m_tree = merklize(last_data);
   assert_eq!(m_tree.root(), merkle_root);

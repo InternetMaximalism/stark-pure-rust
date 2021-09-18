@@ -18,6 +18,7 @@ serde = { version = "^1.0.101", features = ["derive"] }
 futures = {package = "futures", version = "0.3", default_features = false, features = ["executor", "thread-pool"]}
 num_cpus = "1"
 crossbeam = "0.7"
+ff_utils = { version = "0.1.0", path = "../ff_utils" }
 
 [lib]
 name = "fri"

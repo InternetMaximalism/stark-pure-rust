@@ -28,8 +28,8 @@ pub struct SerialMerkleTree<E: Element, H: Digest> {
 }
 
 pub struct PermutedSerialMerkleTree<E: Element, H: Digest> {
-  leaves: Vec<E>,
-  nodes: Vec<Vec<H>>,
+  pub leaves: Vec<E>,
+  pub nodes: Vec<Vec<H>>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -257,30 +257,25 @@ fn test_serial_single_proof() {
   assert_eq!(proof.validate(&merkle_root, index), Ok(vec![0, 0, 0, 3]));
 }
 
-pub struct PermutedParallelMerkleTree<E: Element, H: Digest> {
-  worker: Option<Worker>,
-  leaves: Vec<E>,
-  nodes: Vec<Vec<H>>,
+pub struct PermutedParallelMerkleTree<'a, E: Element, H: Digest> {
+  worker: &'a Worker,
+  pub leaves: Vec<E>,
+  pub nodes: Vec<Vec<H>>,
 }
 
-impl<E: Element, H: Digest> PermutedParallelMerkleTree<E, H> {
-  pub fn new(worker: Worker) -> Self {
+impl<'a, E: Element, H: Digest> PermutedParallelMerkleTree<'a, E, H> {
+  pub fn new(worker: &'a Worker) -> Self {
     let leaves = vec![];
     let nodes = vec![];
     PermutedParallelMerkleTree {
-      worker: Some(worker),
+      worker,
       leaves,
       nodes,
     }
   }
-
-  pub fn release_worker(&mut self) -> Option<Worker> {
-    let worker = std::mem::replace(&mut self.worker, None);
-    worker
-  }
 }
 
-impl<E: Element, H: Digest> MerkleTree<E, H> for PermutedParallelMerkleTree<E, H> {
+impl<'a, E: Element, H: Digest> MerkleTree<E, H> for PermutedParallelMerkleTree<'a, E, H> {
   fn width(&self) -> usize {
     self.leaves.len()
   }
@@ -296,50 +291,41 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for PermutedParallelMerkleTree<E, H
 
     let mut nodes: Vec<Vec<H>> = vec![];
 
-    if let Some(worker) = &self.worker {
-      println!("execute concurrently");
-      let mut split_nodes: Vec<Vec<Vec<H>>> = vec![vec![]; worker.cpus];
-      let mut last_nodes_len = leaves.len();
-      while last_nodes_len >= worker.cpus {
-        last_nodes_len /= 2;
-        for i in 0..worker.cpus {
-          split_nodes[i].push(vec![]);
-        }
-        nodes.push(vec![]);
+    println!("execute concurrently");
+    let mut split_nodes: Vec<Vec<Vec<H>>> = vec![vec![]; self.worker.cpus];
+    let mut last_nodes_len = leaves.len();
+    while last_nodes_len >= self.worker.cpus {
+      last_nodes_len /= 2;
+      for i in 0..self.worker.cpus {
+        split_nodes[i].push(vec![]);
       }
+      nodes.push(vec![]);
+    }
 
-      let leaves_chunk_size = leaves.len() / worker.cpus;
-      let split_nodes_chunk_size = split_nodes.len() / worker.cpus;
-      worker.scope(worker.cpus, |scope, _| {
-        for (_, (sub_leaves, wrapped_nodes)) in leaves
-          .chunks(leaves_chunk_size)
-          .zip(split_nodes.chunks_mut(split_nodes_chunk_size))
-          .enumerate()
-        {
-          scope.spawn(move |_| {
-            let mut sub_tree = SerialMerkleTree::<E, H>::new();
-            sub_tree.update(sub_leaves.to_vec());
-            for (i, sub_nodes) in sub_tree.nodes.iter().enumerate() {
-              wrapped_nodes[0][i] = sub_nodes.to_vec();
-            }
-          });
-        }
-      });
-
-      for wrapped_nodes in split_nodes {
-        // flatten
-        for (i, v) in wrapped_nodes.iter().enumerate() {
-          // println!("v.clone(): {} {:?}", i, v.clone().len());
-          nodes[i].extend(v.clone());
-        }
+    let leaves_chunk_size = leaves.len() / self.worker.cpus;
+    let split_nodes_chunk_size = split_nodes.len() / self.worker.cpus;
+    self.worker.scope(self.worker.cpus, |scope, _| {
+      for (_, (sub_leaves, wrapped_nodes)) in leaves
+        .chunks(leaves_chunk_size)
+        .zip(split_nodes.chunks_mut(split_nodes_chunk_size))
+        .enumerate()
+      {
+        scope.spawn(move |_| {
+          let mut sub_tree = SerialMerkleTree::<E, H>::new();
+          sub_tree.update(sub_leaves.to_vec());
+          for (i, sub_nodes) in sub_tree.nodes.iter().enumerate() {
+            wrapped_nodes[0][i] = sub_nodes.to_vec();
+          }
+        });
       }
-    } else {
-      nodes.push(
-        leaves
-          .iter()
-          .map(|message| H::hash(message.as_ref()))
-          .collect(),
-      );
+    });
+
+    for wrapped_nodes in split_nodes {
+      // flatten
+      for (i, v) in wrapped_nodes.iter().enumerate() {
+        // println!("v.clone(): {} {:?}", i, v.clone().len());
+        nodes[i].extend(v.clone());
+      }
     }
 
     let mut current_nodes = nodes.last().unwrap();
@@ -405,8 +391,7 @@ fn test_parallel_single_proof() {
   ];
 
   let worker = Worker::new();
-  let mut merkle_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
-    PermutedParallelMerkleTree::new(worker);
+  let mut merkle_tree = PermutedParallelMerkleTree::<'_, Vec<u8>, BlakeDigest>::new(&worker);
   merkle_tree.update(leaves);
   let merkle_root = merkle_tree.root();
   assert_eq!(
