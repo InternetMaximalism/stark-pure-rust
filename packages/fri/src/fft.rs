@@ -15,7 +15,7 @@ pub fn expand_root_of_unity<T: PrimeField>(root_of_unity: T) -> Vec<T> {
 
 #[test]
 fn test_expand_root_of_unity() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   let root_of_unity = F7::multiplicative_generator();
   let roots_of_unity: Vec<F7> = [1, 3, 2, 6, 4, 5]
@@ -25,15 +25,15 @@ fn test_expand_root_of_unity() {
   let res = expand_root_of_unity(root_of_unity);
   assert_eq!(res, roots_of_unity);
 
-  use crate::ff_utils::ToBytes;
-  use crate::fp::Fp;
   use crate::utils::parse_bytes_to_u64_vec;
   use ff::Field;
+  use ff_utils::ff_utils::ToBytes;
+  use ff_utils::fp::Fp;
   use num::bigint::BigUint;
 
   let precision = 65536usize;
-  let times_nmr = BigUint::from_bytes_be(&(Fp::zero() - Fp::one()).to_bytes_be().unwrap());
-  let times_dnm = BigUint::from_bytes_be(&precision.to_be_bytes());
+  let times_nmr = BigUint::from_bytes_le(&(Fp::zero() - Fp::one()).to_bytes_le().unwrap());
+  let times_dnm = BigUint::from_bytes_le(&precision.to_le_bytes());
   let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) /precision
   let root_of_unity = Fp::multiplicative_generator().pow_vartime(&times);
   let res = expand_root_of_unity(root_of_unity);
@@ -50,7 +50,7 @@ fn roots_of_unity_rev<T: PrimeField>(roots: &[T]) -> Vec<T> {
 
 #[test]
 fn test_rev_expand_root_of_unity() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   let roots: Vec<F7> = [1, 3, 2, 6, 4, 5]
     .iter()
@@ -83,7 +83,7 @@ fn _simple_ft<T: PrimeField>(values: &[T], roots_of_unity: &[T]) -> Vec<T> {
 
 #[test]
 fn test_simple_ft() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   let values: Vec<F7> = [1, 2, 0].iter().map(|x| F7::from(*x)).collect();
   let roots_of_unity: Vec<F7> = [1, 2, 4].iter().map(|x| F7::from(*x)).collect();
@@ -141,18 +141,15 @@ fn _fft<T: PrimeField>(values: &[T], roots_of_unity: &[T]) -> Vec<T> {
   o
 }
 
-pub fn fft<T: PrimeField>(values: &[T], root_of_unity: T) -> Vec<T> {
-  let roots = expand_root_of_unity(root_of_unity);
-  assert!(values.len() <= roots.len());
-  _fft(values, &roots)
-}
+// pub fn fft<T: PrimeField>(values: &[T], root_of_unity: T) -> Vec<T> {
+//   let roots = expand_root_of_unity(root_of_unity);
+//   assert!(values.len() <= roots.len());
+//   _fft(values, &roots)
+// }
 
 pub fn serial_fft<T: PrimeField>(values: &mut [T], root_of_unity: &T, log_order_of_root: u32) {
-  let omega = *root_of_unity;
-  let log_n = log_order_of_root;
-
   #[inline(always)]
-  fn bitreverse(mut n: u32, l: u32) -> u32 {
+  fn bit_reverse(mut n: u32, l: u32) -> u32 {
     let mut r = 0;
     for _ in 0..l {
       r = (r << 1) | (n & 1);
@@ -161,22 +158,22 @@ pub fn serial_fft<T: PrimeField>(values: &mut [T], root_of_unity: &T, log_order_
     r
   }
 
-  let n = values.len() as u32;
-  assert_eq!(n, 1 << log_n);
+  let order_of_root = 1u32 << log_order_of_root;
+  assert_eq!(values.len(), order_of_root as usize);
 
-  for k in 0..n {
-    let rk = bitreverse(k, log_n);
+  for k in 0..order_of_root {
+    let rk = bit_reverse(k, log_order_of_root);
     if k < rk {
       values.swap(rk as usize, k as usize);
     }
   }
 
   let mut m = 1;
-  for _ in 0..log_n {
-    let w_m = omega.pow_vartime(&[(n / (2 * m)) as u64]);
+  for _ in 0..log_order_of_root {
+    let w_m = root_of_unity.pow_vartime(&[(order_of_root / (2 * m)) as u64]);
 
     let mut k = 0;
-    while k < n {
+    while k < order_of_root {
       let mut w = T::one();
       for j in 0..m {
         let mut t = values[(k + j + m) as usize];
@@ -197,17 +194,17 @@ pub fn serial_fft<T: PrimeField>(values: &mut [T], root_of_unity: &T, log_order_
 
 pub fn parallel_fft<F: PrimeField>(
   values: &mut [F],
+  root_of_unity: &F,
   worker: &Worker,
-  omega: &F,
-  log_n: u32,
-  log_cpus: u32,
+  log_order_of_root: u32,
 ) {
-  assert!(log_n >= log_cpus);
+  let log_cpus = worker.log_num_cpus();
+  assert!(log_order_of_root >= log_cpus);
 
   let num_cpus = 1 << log_cpus;
-  let log_new_n = log_n - log_cpus;
+  let log_new_n = log_order_of_root - log_cpus;
   let mut tmp = vec![vec![F::zero(); 1 << log_new_n]; num_cpus];
-  let new_omega = omega.pow_vartime(&[num_cpus as u64]);
+  let new_omega = root_of_unity.pow_vartime(&[num_cpus as u64]);
 
   worker.scope(0, |scope, _| {
     let values = &*values;
@@ -215,13 +212,13 @@ pub fn parallel_fft<F: PrimeField>(
     for (j, tmp) in tmp.iter_mut().enumerate() {
       scope.spawn(move |_| {
         // Shuffle into a sub-FFT
-        let omega_j = omega.pow_vartime(&[j as u64]); // omega^j
-        let omega_step = omega.pow_vartime(&[(j as u64) << log_new_n]); // omega^(j * 2**log_new_n)
+        let omega_j = root_of_unity.pow_vartime(&[j as u64]); // omega^j
+        let omega_step = root_of_unity.pow_vartime(&[(j as u64) << log_new_n]); // omega^(j * 2**log_new_n)
 
         let mut elt = F::one();
         for i in 0..(1 << log_new_n) {
           for s in 0..num_cpus {
-            let idx = (i + (s << log_new_n)) % (1 << log_n); // (i + s * new_n) % n
+            let idx = (i + (s << log_new_n)) % (1 << log_order_of_root); // (i + s * new_n) % n
             let mut t = values[idx];
 
             t.mul_assign(&elt); // t *= elt
@@ -255,7 +252,7 @@ pub fn parallel_fft<F: PrimeField>(
 
 #[test]
 fn test_fft() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   let values: Vec<F7> = [1, 0, 0, 0, 0, 0].iter().map(|x| F7::from(*x)).collect();
   let res = fft(&values, F7::multiplicative_generator());
@@ -277,15 +274,16 @@ fn _inv_fft<T: PrimeField>(values: &[T], roots_rev: &[T]) -> Vec<T> {
     .collect()
 }
 
-pub fn inv_fft<T: PrimeField>(values: &[T], root_of_unity: T) -> Vec<T> {
-  let roots = expand_root_of_unity(root_of_unity);
-  let roots_rev = roots_of_unity_rev(&roots);
-  assert!(values.len() <= roots_rev.len());
-  _inv_fft(values, &roots_rev)
-}
+// pub fn inv_fft<T: PrimeField>(values: &[T], root_of_unity: T) -> Vec<T> {
+//   let roots = expand_root_of_unity(root_of_unity);
+//   let roots_rev = roots_of_unity_rev(&roots);
+//   assert!(values.len() <= roots_rev.len());
+//   _inv_fft(values, &roots_rev)
+// }
 
 pub fn inv_serial_fft<T: PrimeField>(values: &mut [T], root_of_unity: &T, log_order_of_root: u32) {
-  let m: T = T::from((1 << log_order_of_root).try_into().unwrap());
+  let order_of_root = 1 << log_order_of_root;
+  let m: T = T::from(order_of_root.try_into().unwrap());
   let inv_len = m.invert().unwrap();
   let inv_root_of_unity = root_of_unity.invert().unwrap();
   serial_fft(values, &inv_root_of_unity, log_order_of_root);
@@ -296,21 +294,15 @@ pub fn inv_serial_fft<T: PrimeField>(values: &mut [T], root_of_unity: &T, log_or
 
 pub fn inv_parallel_fft<T: PrimeField>(
   values: &mut [T],
-  worker: &Worker,
   root_of_unity: &T,
+  worker: &Worker,
   log_order_of_root: u32,
-  log_cpus: u32,
 ) {
-  let m: T = T::from((1 << log_order_of_root).try_into().unwrap());
+  let order_of_root = 1 << log_order_of_root;
+  let m: T = T::from(order_of_root.try_into().unwrap());
   let inv_len = m.invert().unwrap();
   let inv_root_of_unity = root_of_unity.invert().unwrap();
-  parallel_fft(
-    values,
-    worker,
-    &inv_root_of_unity,
-    log_order_of_root,
-    log_cpus,
-  );
+  parallel_fft(values, &inv_root_of_unity, worker, log_order_of_root);
   for i in 0..values.len() {
     values[i] *= inv_len;
   }
@@ -318,7 +310,7 @@ pub fn inv_parallel_fft<T: PrimeField>(
 
 #[test]
 fn test_inv_fft() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   let g2 = F7::multiplicative_generator();
   let values: Vec<F7> = [1, 1, 1, 1, 1, 1].iter().map(|x| F7::from(*x)).collect();
@@ -332,24 +324,48 @@ fn test_inv_fft() {
   assert_eq!(res, answer);
 }
 
-pub fn best_fft<T: PrimeField>(a: &mut [T], worker: &Worker, omega: &T, log_n: u32) {
-  let log_cpus = worker.log_num_cpus();
-
-  if log_cpus == 0 || log_n <= log_cpus {
-    serial_fft(a, omega, log_n);
-  } else {
-    parallel_fft(a, worker, omega, log_n, log_cpus);
+pub fn best_fft<T: PrimeField>(
+  coefficients: Vec<T>,
+  root_of_unity: &T,
+  worker: &Worker,
+  log_order_of_root: u32,
+) -> Vec<T> {
+  let mut evaluations = coefficients;
+  let order_of_root = 1 << log_order_of_root;
+  if evaluations.len() < order_of_root {
+    let mut padding = vec![T::zero(); (order_of_root - evaluations.len()) as usize];
+    evaluations.append(&mut padding);
   }
+
+  let cpus = worker.cpus;
+  if cpus == 1 || order_of_root <= cpus {
+    serial_fft(&mut evaluations, root_of_unity, log_order_of_root);
+  } else {
+    parallel_fft(&mut evaluations, root_of_unity, worker, log_order_of_root);
+  }
+  evaluations
 }
 
-pub fn inv_best_fft<T: PrimeField>(a: &mut [T], worker: &Worker, omega: &T, log_n: u32) {
-  let log_cpus = worker.log_num_cpus();
-
-  if log_cpus == 0 || log_n <= log_cpus {
-    inv_serial_fft(a, omega, log_n);
-  } else {
-    inv_parallel_fft(a, worker, omega, log_n, log_cpus);
+pub fn inv_best_fft<T: PrimeField>(
+  evaluations: Vec<T>,
+  root_of_unity: &T,
+  worker: &Worker,
+  log_order_of_root: u32,
+) -> Vec<T> {
+  let mut coefficients = evaluations;
+  let order_of_root = 1 << log_order_of_root;
+  if coefficients.len() < order_of_root {
+    let mut padding = vec![T::zero(); (order_of_root - coefficients.len()) as usize];
+    coefficients.append(&mut padding);
   }
+
+  let cpus = worker.cpus;
+  if cpus == 1 || order_of_root <= cpus {
+    inv_serial_fft(&mut coefficients, root_of_unity, log_order_of_root);
+  } else {
+    inv_parallel_fft(&mut coefficients, root_of_unity, worker, log_order_of_root);
+  }
+  coefficients
 }
 
 pub fn mul_polys<T: PrimeField>(a: &[T], b: &[T], root_of_unity: T) -> Vec<T> {
@@ -369,7 +385,7 @@ pub fn mul_polys<T: PrimeField>(a: &[T], b: &[T], root_of_unity: T) -> Vec<T> {
 
 #[test]
 fn test_mul_polys_via_fft() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   let g2 = F7::multiplicative_generator();
   let a: Vec<F7> = [5, 0, 1].iter().map(|x| F7::from(*x)).collect();
@@ -407,7 +423,7 @@ pub fn div_polys<T: PrimeField>(a: &[T], b: &[T], root_of_unity: T) -> Vec<T> {
 
 #[test]
 fn test_div_polys_via_fft() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   let g2 = F7::multiplicative_generator();
   let a: Vec<F7> = [3, 1, 0, 3, 1, 0].iter().map(|x| F7::from(*x)).collect();

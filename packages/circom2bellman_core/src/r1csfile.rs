@@ -26,7 +26,7 @@ pub struct SectionSize(u64);
 #[derive(Debug, PartialEq)]
 pub struct Header {
     pub field_size: u32,
-    pub prime_number: [u128; 2],
+    pub prime_number: [u8; 32],
     pub n_wires: u32,
     pub n_public_outputs: u32,
     pub n_public_inputs: u32,
@@ -52,7 +52,7 @@ pub struct Factor {
 #[derive(Debug, PartialEq)]
 pub struct Coefficient {
     pub wire_id: u32,
-    pub value: [u32; 8],
+    pub value: [u8; 32],
 }
 
 /*

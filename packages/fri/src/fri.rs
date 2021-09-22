@@ -76,11 +76,12 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     let poly = lagrange_interp(&x_vals, &y_vals);
 
     for (_, &pos) in rest.iter().enumerate() {
+      // Fail to prove low degree if this error occurs.
       debug_assert_eq!(eval_poly_at(&poly, xs[pos]), values[pos]);
     }
 
     acc.push(FriProof::Last {
-      last: values.iter().map(|x| x.to_bytes_be().unwrap()).collect(),
+      last: values.iter().map(|x| x.to_bytes_le().unwrap()).collect(),
     });
     return acc;
   }
@@ -91,14 +92,15 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
 
   // Put the values into a Merkle tree. This is the root that the
   // proof will be checked against
-  let encoded_values: Vec<Vec<u8>> = values.iter().map(|x| x.to_bytes_be().unwrap()).collect();
+  let encoded_values: Vec<Vec<u8>> = values.iter().map(|x| x.to_bytes_le().unwrap()).collect();
   // let m = merklize(&encoded_values);
   let mut m: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
     PermutedParallelMerkleTree::new(&worker);
   m.update(encoded_values);
 
   // Select a pseudo-random x coordinate
-  let special_x = T::from_bytes_be(m.root().as_ref().to_vec()).unwrap();
+  let m_root = m.root();
+  let special_x = T::from_bytes_le(m_root.as_ref()).unwrap();
 
   // Calculate the "column" at that x coordinate
   // (see https://vitalik.ca/general/2017/11/22/starks_part_2.html)
@@ -128,11 +130,11 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     .iter()
     .map(|p| eval_quartic(*p, special_x))
     .collect();
-  let encoded_column: Vec<Vec<u8>> = column.iter().map(|p| p.to_bytes_be().unwrap()).collect();
-  let mut m2: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+  let encoded_column: Vec<Vec<u8>> = column.iter().map(|p| p.to_bytes_le().unwrap()).collect();
+  let mut m2_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
     PermutedParallelMerkleTree::new(&worker);
-  m2.update(encoded_column);
-  let m2_root = m2.root();
+  m2_tree.update(encoded_column);
+  let m2_root = m2_tree.root();
   // let m2 = merklize(&encoded_column);
   // let m2_root = get_root(&m2).clone();
 
@@ -161,7 +163,7 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   // This component of the proof, including Merkle branches
   acc.push(FriProof::Middle {
     root2: m2_root,
-    column_branches: mk_multi_branch(&m2, &ys),
+    column_branches: mk_multi_branch(&m2_tree, &ys),
     poly_branches: mk_multi_branch(&m, &poly_positions),
   });
 
@@ -234,7 +236,7 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
     println!("Verifying degree <= {:?}", max_deg_plus_1);
 
     // Calculate the pseudo-random x coordinate
-    let special_x = T::from_bytes_be(merkle_root.as_ref().to_vec()).unwrap();
+    let special_x = T::from_bytes_le(merkle_root.as_ref()).unwrap();
 
     // Calculate the pseudo-randomly sampled y indices
     let ys = get_pseudorandom_indices(
@@ -254,8 +256,8 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
     }
 
     // Verify Merkle branches
-    let column_values = verify_multi_branch(&root2, &ys, column_branches);
-    let poly_values = verify_multi_branch(&merkle_root, &poly_positions, poly_branches);
+    let column_values = verify_multi_branch(&root2, &ys, column_branches).unwrap();
+    let poly_values = verify_multi_branch(&merkle_root, &poly_positions, poly_branches).unwrap();
 
     // For each y coordinate, get the x coordinates on the row, the values on
     // the row, and the value at that y from the column
@@ -274,10 +276,10 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
       // The values from the original polynomial
       let mut row = [T::zero(); 4];
       for j in 0..4 {
-        row[j] = T::from_bytes_be(poly_values.clone().unwrap()[i * 4 + j].clone()).unwrap();
+        row[j] = T::from_bytes_le(&poly_values[i * 4 + j]).unwrap();
       }
       rows.push(row);
-      column_vals.push(T::from_bytes_be(column_values.clone().unwrap()[i].clone()).unwrap());
+      column_vals.push(T::from_bytes_le(&column_values[i]).unwrap());
     }
 
     // Verify for each selected y coordinate that the four points from the
@@ -327,7 +329,7 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
 
   let decoded_last_data: Vec<T> = last_data
     .iter()
-    .map(|x| T::from_bytes_be(x.to_vec()).unwrap())
+    .map(|x| T::from_bytes_le(x).unwrap())
     .collect();
 
   assert!(pts.len() > max_deg_plus_1);

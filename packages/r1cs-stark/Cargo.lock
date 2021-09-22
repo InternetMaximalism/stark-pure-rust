@@ -286,6 +286,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "ff_utils"
+version = "0.1.0"
+dependencies = [
+ "bitvec",
+ "blake2",
+ "byteorder",
+ "crossbeam",
+ "ff",
+ "futures",
+ "group",
+ "hex",
+ "num 0.4.0",
+ "num_cpus",
+ "pairing_ce 0.24.2",
+ "rand_core 0.6.3",
+ "serde",
+ "subtle",
+]
+
+[[package]]
 name = "fri"
 version = "0.1.0"
 dependencies = [
@@ -294,6 +314,7 @@ dependencies = [
  "byteorder",
  "crossbeam",
  "ff",
+ "ff_utils",
  "futures",
  "group",
  "hex",
@@ -704,9 +725,13 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "circom2bellman_core",
+ "crossbeam",
  "ff",
+ "ff_utils",
  "fri",
+ "futures",
  "num 0.4.0",
+ "num_cpus",
  "serde",
  "serde_json",
 ]

@@ -5,7 +5,7 @@ use fri::{fri::FriProof, merkle_tree2::BlakeDigest};
 use num::bigint::BigUint;
 use serde::{Deserialize, Serialize};
 
-pub fn parse_hex_to_decimal(value: &[u8]) -> String {
+pub fn parse_be_bytes_to_decimal(value: &[u8]) -> String {
   BigUint::from_bytes_be(value).to_str_radix(10)
 }
 
@@ -20,23 +20,23 @@ pub fn parse_hex_to_decimal(value: &[u8]) -> String {
 //   output
 // }
 
-pub fn u32_le_bytes_to_u8_be_bytes(values: [u32; 8]) -> [u8; 32] {
-  let mut output = [0u8; 32];
-  for (i, value) in values.iter().rev().enumerate() {
-    for (j, &v) in value.to_be_bytes().iter().enumerate() {
-      output[4 * i + j] = v;
-    }
-  }
+// pub fn u32_le_bytes_to_u8_be_bytes(values: [u32; 8]) -> [u8; 32] {
+//   let mut output = [0u8; 32];
+//   for (i, value) in values.iter().rev().enumerate() {
+//     for (j, &v) in value.to_be_bytes().iter().enumerate() {
+//       output[4 * i + j] = v;
+//     }
+//   }
 
-  output
-}
+//   output
+// }
 
 pub fn mk_seed(messages: &[Vec<u8>]) -> String {
   let mut message: Vec<u8> = vec![];
   for m in messages {
     message.extend(m);
   }
-  parse_hex_to_decimal(&blake(&message))
+  parse_be_bytes_to_decimal(&blake(&message))
 }
 
 pub fn r1cs_computational_trace<T: PrimeField>(coefficients: &[T], witness: &[T]) -> Vec<T> {

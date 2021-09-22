@@ -14,9 +14,10 @@ pub fn read_bytes(_bytes: &[u8]) -> R1csContents {
     assert_eq!(SectionType::HeaderSection as u32, section_type_header);
     let _section_size = p.get_u64_le();
     let field_size = p.get_u32_le();
-    let prime_number_1 = p.get_u128_le();
-    let prime_number_2 = p.get_u128_le();
-    let prime_number = [prime_number_1, prime_number_2];
+    let mut prime_number = [0u8; 32]; // little endian
+    for i in 0..32 {
+        prime_number[i] = p.get_u8();
+    }
     let n_wires = p.get_u32_le();
     let n_public_outputs = p.get_u32_le();
     let n_public_inputs = p.get_u32_le();
@@ -48,16 +49,10 @@ pub fn read_bytes(_bytes: &[u8]) -> R1csContents {
             let mut coefficients = Vec::<Coefficient>::new();
             for _ in 0..n_coefficient {
                 let wire_id = p.get_u32_le();
-                let value = [
-                    p.get_u32_le(),
-                    p.get_u32_le(),
-                    p.get_u32_le(),
-                    p.get_u32_le(),
-                    p.get_u32_le(),
-                    p.get_u32_le(),
-                    p.get_u32_le(),
-                    p.get_u32_le(),
-                ];
+                let mut value = [0u8; 32]; // little endian
+                for i in 0..32 {
+                    value[i] = p.get_u8();
+                }
                 let coefficient = Coefficient { wire_id, value };
                 coefficients.push(coefficient)
             }

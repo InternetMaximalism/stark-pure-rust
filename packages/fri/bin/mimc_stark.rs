@@ -8,7 +8,7 @@ use fri::utils::{blake, get_pseudorandom_indices, is_a_power_of_2, parse_bytes_t
 use num::bigint::BigUint;
 use std::convert::TryInto;
 
-fn parse_hex_to_decimal(value: &[u8]) -> String {
+fn parse_be_bytes_to_decimal(value: &[u8]) -> String {
   BigUint::from_bytes_be(value).to_str_radix(10)
 }
 
@@ -17,7 +17,7 @@ fn mk_seed(messages: &[Vec<u8>]) -> String {
   for m in messages {
     message.extend(m);
   }
-  parse_hex_to_decimal(&blake(&message))
+  parse_be_bytes_to_decimal(&blake(&message))
 }
 
 pub fn mimc_computational_trace<T: PrimeField>(
@@ -68,8 +68,8 @@ pub fn mk_mimc_proof<T: PrimeField + FromBytes + ToBytes>(
   let precision = steps * EXTENSION_FACTOR;
 
   // Root of unity such that x^precision=1
-  let times_nmr = BigUint::from_bytes_be(&(T::zero() - T::one()).to_bytes_be().unwrap());
-  let times_dnm = BigUint::from_bytes_be(&precision.to_be_bytes());
+  let times_nmr = BigUint::from_bytes_le(&(T::zero() - T::one()).to_bytes_le().unwrap());
+  let times_dnm = BigUint::from_bytes_le(&precision.to_le_bytes());
   assert!(&times_nmr % &times_dnm == BigUint::from(0u8));
   let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) / precision
   let g2 = T::multiplicative_generator().pow_vartime(&times); // g2^precision == 1 mod modulus
@@ -161,9 +161,9 @@ pub fn mk_mimc_proof<T: PrimeField + FromBytes + ToBytes>(
     .zip(&b_evaluations)
     .map(|((&p_val, &d_val), &b_val)| {
       let mut res = vec![];
-      res.extend(p_val.to_bytes_be().unwrap());
-      res.extend(d_val.to_bytes_be().unwrap());
-      res.extend(b_val.to_bytes_be().unwrap());
+      res.extend(p_val.to_bytes_le().unwrap());
+      res.extend(d_val.to_bytes_le().unwrap());
+      res.extend(b_val.to_bytes_le().unwrap());
       res
     })
     .collect();
@@ -201,7 +201,7 @@ pub fn mk_mimc_proof<T: PrimeField + FromBytes + ToBytes>(
 
   let l_evaluations_str: Vec<Vec<u8>> = l_evaluations
     .iter()
-    .map(|x| x.to_bytes_be().unwrap())
+    .map(|x| x.to_bytes_le().unwrap())
     .collect();
   let l_m_tree = merklize(&l_evaluations_str);
   println!("Computed random linear combination");
@@ -269,8 +269,8 @@ pub fn verify_mimc_proof<T: PrimeField + FromBytes + ToBytes>(
   let precision = steps * EXTENSION_FACTOR;
 
   // Get (steps)th root of unity
-  let times_nmr = BigUint::from_bytes_be(&(T::zero() - T::one()).to_bytes_be().unwrap());
-  let times_dnm = BigUint::from_bytes_be(&precision.to_be_bytes());
+  let times_nmr = BigUint::from_bytes_le(&(T::zero() - T::one()).to_bytes_le().unwrap());
+  let times_dnm = BigUint::from_bytes_le(&precision.to_le_bytes());
   assert!(&times_nmr % &times_dnm == BigUint::from(0u8));
   let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) / precision
   let g2 = T::multiplicative_generator().pow_vartime(&times); // g2^precision == 1 mod modulus
@@ -323,15 +323,15 @@ pub fn verify_mimc_proof<T: PrimeField + FromBytes + ToBytes>(
     let x_to_the_steps = x.pow_vartime(&parse_bytes_to_u64_vec(&steps.to_le_bytes()));
     let mut m_branch1 = main_branch_leaves[i * 2].clone();
     let mut m_branch2 = main_branch_leaves[i * 2 + 1].clone();
-    let l_of_x = T::from_bytes_be(linear_comb_branch_leaves[i].clone()).unwrap();
+    let l_of_x = T::from_bytes_le(linear_comb_branch_leaves[i].clone()).unwrap();
 
     let mut m_branch3 = m_branch1.split_off(32); // m_branch1 = leaves[i * 2][..32]
     let m_branch4 = m_branch3.split_off(32); // m_branch3 = leaves[i * 2][32..64], m_branch4 = leaves[i * 2][64..]
     let _ = m_branch2.split_off(32); // m_branch2 = main_branch_leaves[i * 2 + 1][..32]
-    let p_of_x = T::from_bytes_be(m_branch1).unwrap();
-    let p_of_g1x = T::from_bytes_be(m_branch2).unwrap();
-    let d_of_x = T::from_bytes_be(m_branch3).unwrap();
-    let b_of_x = T::from_bytes_be(m_branch4).unwrap();
+    let p_of_x = T::from_bytes_le(m_branch1).unwrap();
+    let p_of_g1x = T::from_bytes_le(m_branch2).unwrap();
+    let d_of_x = T::from_bytes_le(m_branch3).unwrap();
+    let b_of_x = T::from_bytes_le(m_branch4).unwrap();
 
     let z_value = (x.pow_vartime(&parse_bytes_to_u64_vec(&steps.to_le_bytes())) - T::one())
       * (x - last_step_position).invert().unwrap();

@@ -11,8 +11,8 @@ pub trait Digest: AsRef<[u8]> + Clone + Default + Sync + Send + Eq + Debug {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Proof<E: Element, H: Digest> {
-  leaf: E,
-  nodes: Vec<H>,
+  pub leaf: E,
+  pub nodes: Vec<H>,
 }
 
 pub trait MerkleTree<E: Element, H: Digest> {
@@ -291,7 +291,6 @@ impl<'a, E: Element, H: Digest> MerkleTree<E, H> for PermutedParallelMerkleTree<
 
     let mut nodes: Vec<Vec<H>> = vec![];
 
-    println!("execute concurrently");
     let mut split_nodes: Vec<Vec<Vec<H>>> = vec![vec![]; self.worker.cpus];
     let mut last_nodes_len = leaves.len();
     while last_nodes_len >= self.worker.cpus {
@@ -483,6 +482,73 @@ pub fn verify_multi_branch<E: Element, H: Digest>(
       .map(|(index, proof)| proof.validate(&root, *index).expect(""))
       .collect(),
   )
+}
+
+#[test]
+fn test_serial_multi_proof() {
+  let indices = [2, 7, 13];
+  let leaves: Vec<Vec<u8>> = vec![hex::decode("7fffffff").unwrap(); 1 << 20];
+  println!("generate Merkle tree");
+
+  let mut merkle_tree: PermutedSerialMerkleTree<Vec<u8>, BlakeDigest> =
+    PermutedSerialMerkleTree::new();
+  merkle_tree.update(leaves);
+  let merkle_root = merkle_tree.root();
+  assert_eq!(
+    merkle_root,
+    BlakeDigest(vec![
+      174, 144, 67, 84, 246, 248, 226, 220, 207, 80, 125, 76, 79, 127, 103, 100, 40, 133, 31, 137,
+      14, 116, 212, 75, 41, 10, 138, 231, 20, 15, 60, 218
+    ])
+  );
+
+  println!("generate Merkle proof");
+  let proofs = mk_multi_branch(&merkle_tree, &indices);
+  assert_eq!(proofs[0].leaf, [127, 255, 255, 255]);
+  assert_eq!(
+    proofs[0].nodes[0],
+    BlakeDigest(vec![
+      183, 43, 83, 113, 206, 255, 164, 224, 26, 161, 132, 156, 219, 135, 5, 64, 110, 20, 121, 29,
+      179, 89, 248, 38, 188, 1, 163, 146, 237, 38, 182, 185
+    ])
+  );
+
+  verify_multi_branch(&merkle_root, &indices, proofs).unwrap();
+  // assert_eq!(Ok(vec![0, 0, 0, 3]));
+}
+
+#[test]
+fn test_parallel_multi_proof() {
+  let indices = [2, 7, 13];
+  let leaves: Vec<Vec<u8>> = vec![hex::decode("7fffffff").unwrap(); 1 << 20];
+  println!("generate Merkle tree");
+
+  let worker = Worker::new();
+  let mut merkle_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+    PermutedParallelMerkleTree::new(&worker);
+  merkle_tree.update(leaves);
+  let merkle_root = merkle_tree.root();
+  assert_eq!(
+    merkle_root,
+    BlakeDigest(vec![
+      174, 144, 67, 84, 246, 248, 226, 220, 207, 80, 125, 76, 79, 127, 103, 100, 40, 133, 31, 137,
+      14, 116, 212, 75, 41, 10, 138, 231, 20, 15, 60, 218
+    ])
+  );
+
+  println!("generate Merkle proof");
+  let proofs = mk_multi_branch(&merkle_tree, &indices);
+  assert_eq!(proofs[0].leaf, [127, 255, 255, 255]);
+  assert_eq!(
+    proofs[0].nodes[0],
+    BlakeDigest(vec![
+      183, 43, 83, 113, 206, 255, 164, 224, 26, 161, 132, 156, 219, 135, 5, 64, 110, 20, 121, 29,
+      179, 89, 248, 38, 188, 1, 163, 146, 237, 38, 182, 185
+    ])
+  );
+
+  verify_multi_branch(&merkle_root, &indices, proofs).unwrap();
+  // assert_eq!(Ok(vec![0, 0, 0, 3]));
 }
 
 pub fn permute4_values<E: Element>(values: &[E]) -> Vec<E> {

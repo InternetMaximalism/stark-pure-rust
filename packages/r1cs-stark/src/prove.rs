@@ -43,7 +43,7 @@
 //   let times_nmr = BigUint::from_bytes_be(&(T::zero() - T::one()).to_bytes_be().unwrap());
 //   let times_dnm = BigUint::from_bytes_be(&precision.to_be_bytes());
 //   assert!(&times_nmr % &times_dnm == BigUint::from(0u8));
-//   let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) / precision
+//   let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_be()); // (modulus - 1) / precision
 //   let g2 = T::multiplicative_generator().pow_vartime(&times); // g2^precision == 1 mod modulus
 
 //   // Root of unity such that x^steps=1
