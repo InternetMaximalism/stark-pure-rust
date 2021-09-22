@@ -266,7 +266,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     let k_of_x = eval_poly_at(&k_polynomial, x);
     let f0 = eval_poly_at(&f0_polynomial, x);
     let f1 = eval_poly_at(&f1_polynomial, x);
-    // let f2 = eval_poly_at(&f2_polynomial, x);
+    let f2 = eval_poly_at(&f2_polynomial, x);
 
     // Check first transition constraints Q1(x) = Z1(x) * D1(x)
     assert_eq!(
@@ -275,13 +275,9 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     );
 
     // Check second transition constraints Q2(x) = Z2(x) * D2(x)
-    println!(
-      "{:?} {:?} {:?} {:?} {:?}",
-      p_of_x_plus_2w, p_of_x, p_of_x_plus_w, z1_value, d2_of_x
-    );
     assert_eq!(
-      // f0 * f2 * (p_of_x_plus_2w - p_of_x * p_of_x_plus_w),
-      p_of_x_plus_2w - p_of_x * p_of_x_plus_w,
+      f2 * (p_of_x_plus_2w - p_of_x * p_of_x_plus_w),
+      // p_of_x_plus_2w - p_of_x * p_of_x_plus_w,
       z1_value * d2_of_x
     );
 

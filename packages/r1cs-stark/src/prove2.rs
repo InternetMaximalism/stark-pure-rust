@@ -90,7 +90,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   witness_trace.extend(vec![T::zero(); steps - original_steps]);
   // println!("witness_trace.len(): {:?}", witness_trace.len());
 
-  println!("computational_trace: {:?}", computational_trace);
+  // println!("computational_trace: {:?}", computational_trace);
   let mut computational_trace = computational_trace.to_vec();
   computational_trace.extend(vec![T::zero(); steps - original_steps]);
 
@@ -128,13 +128,13 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
 
   let s_polynomial = inv_best_fft(witness_trace.clone(), &g1, &worker, log_order_of_g1); // S(X)
   let s_evaluations = best_fft(s_polynomial, &g2, &worker, log_order_of_g2);
-  println!("s_evaluations: {:?}", s_evaluations);
+  // println!("s_evaluations: {:?}", s_evaluations);
   println!("Converted witness trace into a polynomial and low-degree extended it");
 
   // println!("trace: {:?}", computational_trace);
   let p_polynomial = inv_best_fft(computational_trace, &g1, &worker, log_order_of_g1); // P(X)
   let p_evaluations = best_fft(p_polynomial, &g2, &worker, log_order_of_g2);
-  println!("p_evaluations: {:?}", p_evaluations);
+  // println!("p_evaluations: {:?}", p_evaluations);
   println!("Converted computational trace into a polynomial and low-degree extended it");
 
   // println!("coeff: {:?}", coefficients);
@@ -144,7 +144,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   println!("Converted coefficients into a polynomial and low-degree extended it");
 
   let f0_polynomial = inv_best_fft(flag0.to_vec(), &g1, &worker, log_order_of_g1);
-  let f0_evaluations = best_fft(f0_polynomial, &g2, &worker, log_order_of_g2);
+  let f0_evaluations = best_fft(f0_polynomial.clone(), &g2, &worker, log_order_of_g2);
   // println!("f0_evaluations: {:?}", f0_evaluations);
 
   let f1_polynomial = inv_best_fft(flag1.to_vec(), &g1, &worker, log_order_of_g1);
@@ -176,6 +176,15 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     // Q1(j) = F0(j) * (P(j) - F1(j) * P(j - 1) - K(j) * S(j))
     let q1_of_x = f0 * (p_of_x - f1 * p_of_prev_x - k_of_x * s_of_x);
     q1_evaluations.push(q1_of_x);
+    // if j % skips == 0 {
+    //   println!(
+    //     "{:?}, {:?}, {:?}, {:?}",
+    //     f0,
+    //     f1,
+    //     p_of_x - k_of_x * s_of_x,
+    //     p_of_prev_x
+    //   );
+    // }
   }
   // println!("q1_evaluations: {:?}", q1_evaluations);
   println!("Computed Q1 polynomial");
@@ -184,26 +193,24 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   for j in 0..precision {
     let j = j;
     let j2 = (j + original_steps / 3 * skips) % precision;
-    let j3 = (j + original_steps / 3 * skips) % precision;
+    let j3 = (j + original_steps / 3 * 2 * skips) % precision;
     let a_eval = p_evaluations[j];
     let b_eval = p_evaluations[j2];
     let c_eval = p_evaluations[j3];
-    // let f0 = f0_evaluations[j];
-    // let f2 = f2_evaluations[j];
+    let f2 = f2_evaluations[j];
 
     // Q2(j) = F0(j) * F2(j) * (P(j + 2k) - P(j + k) * P(j))
     // where k := original_steps / 3;
-    // let q2_of_x = f0 * f2 * (c_eval - a_eval * b_eval);
-    let q2_of_x = a_eval * b_eval - c_eval;
-    if j % skips == 0 {
-      println!(
-        "{:?} {:?} {:?} {:?}",
-        a_eval,
-        b_eval,
-        a_eval * b_eval,
-        q2_of_x
-      );
-    }
+    let q2_of_x = f2 * (c_eval - a_eval * b_eval);
+    // if j % skips == 0 {
+    //   println!(
+    //     "{:?}, {:?}, {:?}, {:?}",
+    //     c_eval - a_eval * b_eval,
+    //     f0,
+    //     f2,
+    //     q2_of_x
+    //   );
+    // }
     q2_evaluations.push(q2_of_x);
   }
   // println!("f0_evaluations: {:?}", f0_evaluations);
@@ -255,6 +262,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     val_dnm_list.push(val_dnm);
     a_nmr_evaluations.push(acc_nmr);
     a_dnm_evaluations.push(acc_dnm);
+    // println!("{:?}, {:?}", acc_nmr, acc_dnm);
   }
 
   let inv_a_dnm_evaluations = multi_inv(&a_dnm_evaluations);
@@ -267,18 +275,24 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let a_polynomials = inv_best_fft(a_mini_evaluations, &g1, &worker, log_order_of_g1);
   let a_evaluations = best_fft(a_polynomials, &g2, &worker, log_order_of_g2);
 
-  let q3_evaluations = {
-    let mut q3_evaluations = vec![];
-    for j in 0..precision {
-      // A(j) * val_dnm = A(j - 1) * val_nmr
-      let val_nmr = r1 + r2 * ext_indices[j] + r3 * s_evaluations[j];
-      let val_dnm = r1 + r2 * ext_permuted_indices[j] + r3 * s_evaluations[j];
-      let q3_of_x =
-        a_evaluations[j] * val_dnm - a_evaluations[(j + precision - steps) % precision] * val_nmr;
-      q3_evaluations.push(q3_of_x);
-    }
-    q3_evaluations
-  };
+  let mut q3_evaluations = vec![];
+  for j in 0..precision {
+    // A(j) * val_dnm = A(j - 1) * val_nmr
+    let val_nmr = r1 + r2 * ext_indices[j] + r3 * s_evaluations[j];
+    let val_dnm = r1 + r2 * ext_permuted_indices[j] + r3 * s_evaluations[j];
+    let prev_j = (j + precision - skips) % precision;
+    let q3_of_x = a_evaluations[j] * val_dnm - a_evaluations[prev_j] * val_nmr;
+    q3_evaluations.push(q3_of_x);
+    // if j % skips == 0 {
+    //   println!(
+    //     "a {:?}, {:?}, {:?}, {:?}",
+    //     val_nmr * val_dnm.invert().unwrap(),
+    //     a_evaluations[prev_j],
+    //     a_evaluations[prev_j] * val_nmr * val_dnm.invert().unwrap(),
+    //     a_evaluations[j],
+    //   );
+    // }
+  }
 
   let z3_polynomial = {
     let mut sparse_z3_nmr = HashMap::new();
@@ -490,7 +504,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   {
     l_evaluations.push(
       k0 * d1_of_x
-        // + k1 * d2_of_x // TODO
+        + k1 * d2_of_x
         + k2 * d3_of_x
         + k3 * p_of_x
         + k4 * p_of_x * x_to_the_steps

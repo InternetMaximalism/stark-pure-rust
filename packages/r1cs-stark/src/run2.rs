@@ -48,13 +48,11 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
   );
 
   // assert_eq!(witness.len(), n_wires as usize);
-  println!("witness: {:?}", witness);
   let witness: Vec<TargetFF> = witness
     .iter()
     .map(|x| TargetFF::from_bytes_le(x).unwrap())
     .collect();
   assert_eq!(witness[0], TargetFF::one());
-  println!("witness: {:?}", witness);
   let public_wires = witness[..(1 + n_public_inputs as usize + n_public_outputs as usize)].to_vec();
 
   type TargetFF = Fp; // TODO: Use r1cs.header.field_size.
@@ -71,8 +69,6 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
   let mut c_coeff_list: Vec<TargetFF> = vec![];
 
   let mut wire_using_list: Vec<Vec<(u8, usize)>> = vec![vec![]; n_wires as usize]; // Vec<Vec<Position>>
-
-  // let mut wire_prev_list: HashMap<(u8, usize), (u8, usize)> = HashMap::new(); // HashMap<Position, Position>
   let mut acc_n_coeff = 0usize;
   let mut last_coeff_list = vec![];
   for constraint in constraints {
@@ -99,16 +95,10 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
         let wire_id = *wire_id as usize;
         let w = witness[wire_id];
         let c = TargetFF::from_bytes_le(value).unwrap();
-        println!("w: {:?}", w);
-        println!("c: {:?}", c);
-        println!("t: {:?}", t);
+        // println!("w: {:?}", w);
+        // println!("c: {:?}", c);
+        // println!("t: {:?}", t);
         t = t + c * w;
-        // if wire_using_list[wire_id].len() > 0 {
-        //   wire_prev_list.insert(
-        //     (0, a_trace.len()),
-        //     *wire_using_list[wire_id].last().unwrap(),
-        //   );
-        // }
         wire_using_list[wire_id].push((0, a_trace.len()));
         a_wit_list.push(w);
         a_coeff_list.push(c);
@@ -117,15 +107,9 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
         let wire_id = n_wires - 1;
         let w = witness[wire_id];
         let c = TargetFF::zero();
-        println!("w': {:?}", w);
-        println!("c': {:?}", c);
-        println!("t: {:?}", t);
-        // if wire_using_list[wire_id].len() > 0 {
-        //   wire_prev_list.insert(
-        //     (0, a_trace.len()),
-        //     *wire_using_list[wire_id].last().unwrap(),
-        //   );
-        // }
+        // println!("w': {:?}", w);
+        // println!("c': {:?}", c);
+        // println!("t: {:?}", t);
         wire_using_list[wire_id].push((0, a_trace.len()));
         a_wit_list.push(w);
         a_coeff_list.push(c);
@@ -140,16 +124,10 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
         let wire_id = *wire_id as usize;
         let w = witness[wire_id];
         let c = TargetFF::from_bytes_le(value).unwrap();
-        println!("w: {:?}", w);
-        println!("c: {:?}", c);
-        println!("t: {:?}", t);
+        // println!("w: {:?}", w);
+        // println!("c: {:?}", c);
+        // println!("t: {:?}", t);
         t = t + c * w;
-        // if wire_using_list[wire_id].len() > 0 {
-        //   wire_prev_list.insert(
-        //     (1, b_trace.len()),
-        //     *wire_using_list[wire_id].last().unwrap(),
-        //   );
-        // }
         wire_using_list[wire_id].push((1, b_trace.len()));
         b_wit_list.push(w);
         b_coeff_list.push(c);
@@ -158,15 +136,9 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
         let wire_id = n_wires - 1;
         let w = witness[wire_id];
         let c = TargetFF::zero();
-        println!("w': {:?}", w);
-        println!("c': {:?}", c);
-        println!("t: {:?}", t);
-        // if wire_using_list[wire_id].len() > 0 {
-        //   wire_prev_list.insert(
-        //     (1, b_trace.len()),
-        //     *wire_using_list[wire_id].last().unwrap(),
-        //   );
-        // }
+        // println!("w': {:?}", w);
+        // println!("c': {:?}", c);
+        // println!("t: {:?}", t);
         wire_using_list[wire_id].push((1, b_trace.len()));
         b_wit_list.push(w);
         b_coeff_list.push(c);
@@ -181,16 +153,10 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
         let wire_id = *wire_id as usize;
         let w = witness[wire_id];
         let c = TargetFF::from_bytes_le(value).unwrap();
-        println!("w: {:?}", w);
-        println!("c: {:?}", c);
-        println!("t: {:?}", t);
+        // println!("w: {:?}", w);
+        // println!("c: {:?}", c);
+        // println!("t: {:?}", t);
         t = t + c * w;
-        // if wire_using_list[wire_id].len() > 0 {
-        //   wire_prev_list.insert(
-        //     (2, c_trace.len()),
-        //     *wire_using_list[wire_id].last().unwrap(),
-        //   );
-        // }
         wire_using_list[wire_id].push((2, c_trace.len()));
         c_wit_list.push(w);
         c_coeff_list.push(c);
@@ -199,15 +165,9 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
         let wire_id = n_wires - 1;
         let w = witness[wire_id];
         let c = TargetFF::zero();
-        println!("w': {:?}", w);
-        println!("c': {:?}", c);
-        println!("t: {:?}", t);
-        // if wire_using_list[wire_id].len() > 0 {
-        //   wire_prev_list.insert(
-        //     (2, a_trace.len()),
-        //     *wire_using_list[wire_id].last().unwrap(),
-        //   );
-        // }
+        // println!("w': {:?}", w);
+        // println!("c': {:?}", c);
+        // println!("t: {:?}", t);
         wire_using_list[wire_id].push((2, c_trace.len()));
         c_wit_list.push(w);
         c_coeff_list.push(c);
@@ -219,12 +179,14 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
     last_coeff_list.push(acc_n_coeff - 1);
   }
 
+  let a_trace_len = a_trace.len();
+
   let mut flag0 = vec![];
   let mut flag1 = vec![];
   let mut flag2 = vec![];
   for k in 0..(a_coeff_list.len() + b_coeff_list.len() + c_coeff_list.len()) {
     let f0 = 1u64;
-    let f1: u64 = if !last_coeff_list.contains(&(k % n_constraints)) {
+    let f1: u64 = if !last_coeff_list.contains(&((k + a_trace_len - 1) % a_trace_len)) {
       1
     } else {
       0
@@ -232,24 +194,8 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
     let f2: u64 = if last_coeff_list.contains(&k) { 1 } else { 0 };
     flag0.push(TargetFF::from(f0));
     flag1.push(TargetFF::from(f1));
-    flag2.push(TargetFF::from(f2));
+    flag2.push(TargetFF::from(f0 * f2));
   }
-
-  // for wire_id in 0..n_wires {
-  //   if wire_using_list[wire_id].len() > 0 {
-  //     wire_prev_list.insert(
-  //       *wire_using_list[wire_id].first().unwrap(),
-  //       *wire_using_list[wire_id].last().unwrap(),
-  //     );
-  //   }
-  // }
-
-  let a_trace_len = a_trace.len();
-
-  // let wire_prev_list: Vec<(usize, usize)> = wire_prev_list
-  //   .iter()
-  //   .map(|((k, v), (prev_k, prev_v))| (k * a_trace.len() + v, prev_k * a_trace.len() + prev_v))
-  //   .collect();
 
   let mut witness_trace = vec![];
   witness_trace.extend(a_wit_list);
@@ -265,7 +211,7 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
   coefficients.extend(b_coeff_list);
   coefficients.extend(c_coeff_list);
 
-  println!("coefficients: {:?}", coefficients);
+  // println!("coefficients: {:?}", coefficients);
   debug_assert_eq!(coefficients.len(), witness_trace.len());
   debug_assert_eq!(computational_trace.len(), witness_trace.len());
 
@@ -286,27 +232,8 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
       old_w = w;
     }
   }
-  // let wire_prev_list = wire_prev_list
-  //   .iter()
-  //   .map(|(&(k1, v1), &(k2, v2))| {
-  //     (
-  //       a_trace_len * k1 as usize + v1,
-  //       a_trace_len * k2 as usize + v2,
-  //     )
-  //   })
-  //   .collect::<HashMap<usize, usize>>();
-  // let mut permuted_indices = vec![0usize; wire_prev_list.len()];
-  // for w in 0..wire_prev_list.len() {
-  //   permuted_indices.push(
-  //     *wire_prev_list
-  //       .iter()
-  //       .filter(|&v| *v.0 == w)
-  //       .collect::<Vec<(&usize, &usize)>>()[0]
-  //       .1,
-  //   );
-  // }
-  // let permuted_indices = (0..witness_trace.len()).collect::<Vec<_>>();
-  println!("permuted_indices: {:?}", permuted_indices);
+  // println!("permuted_indices: {:?}", permuted_indices);
+  // println!("wire_using_list: {:?}", wire_using_list);
 
   println!("public_first_indices");
   let mut public_first_indices = vec![];
@@ -316,7 +243,7 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
       public_first_indices.push((w, a_trace_len * k as usize + v));
     }
   }
-  println!("public_first_indices: {:?}", public_first_indices);
+  // println!("public_first_indices: {:?}", public_first_indices);
 
   mk_r1cs_proof(
     &witness_trace,
@@ -397,26 +324,14 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
         let w = witness[wire_id];
         let c = TargetFF::from_bytes_le(value).unwrap();
         t = t + c * w;
-        // if wire_using_list[wire_id].len() > 0 {
-        //   wire_prev_list.insert(
-        //     (0, a_trace.len()),
-        //     *wire_using_list[wire_id].last().unwrap(),
-        //   );
-        // }
         wire_using_list[wire_id].push((0, a_trace.len()));
         a_wit_list.push(w);
         a_coeff_list.push(c);
         a_trace.push(t);
       } else {
         let wire_id = n_wires - 1;
-        let w = witness[n_wires - 1];
+        let w = witness[wire_id];
         let c = TargetFF::zero();
-        // if wire_using_list[wire_id].len() > 0 {
-        //   wire_prev_list.insert(
-        //     (0, a_trace.len()),
-        //     *wire_using_list[wire_id].last().unwrap(),
-        //   );
-        // }
         wire_using_list[wire_id].push((0, a_trace.len()));
         a_wit_list.push(w);
         a_coeff_list.push(c);
@@ -432,12 +347,6 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
         let w = witness[wire_id];
         let c = TargetFF::from_bytes_le(value).unwrap();
         t = t + c * w;
-        // if wire_using_list[wire_id].len() > 0 {
-        //   wire_prev_list.insert(
-        //     (1, b_trace.len()),
-        //     *wire_using_list[wire_id].last().unwrap(),
-        //   );
-        // }
         wire_using_list[wire_id].push((1, b_trace.len()));
         b_wit_list.push(w);
         b_coeff_list.push(c);
@@ -446,12 +355,6 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
         let wire_id = n_wires - 1;
         let w = witness[wire_id];
         let c = TargetFF::zero();
-        // if wire_using_list[wire_id].len() > 0 {
-        //   wire_prev_list.insert(
-        //     (1, b_trace.len()),
-        //     *wire_using_list[wire_id].last().unwrap(),
-        //   );
-        // }
         wire_using_list[wire_id].push((1, b_trace.len()));
         b_wit_list.push(w);
         b_coeff_list.push(c);
@@ -467,12 +370,6 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
         let w = witness[wire_id];
         let c = TargetFF::from_bytes_le(value).unwrap();
         t = t + c * w;
-        // if wire_using_list[wire_id].len() > 0 {
-        //   wire_prev_list.insert(
-        //     (2, c_trace.len()),
-        //     *wire_using_list[wire_id].last().unwrap(),
-        //   );
-        // }
         wire_using_list[wire_id].push((2, c_trace.len()));
         c_wit_list.push(w);
         c_coeff_list.push(c);
@@ -481,12 +378,6 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
         let wire_id = n_wires - 1;
         let w = witness[wire_id];
         let c = TargetFF::zero();
-        // if wire_using_list[wire_id].len() > 0 {
-        //   wire_prev_list.insert(
-        //     (2, c_trace.len()),
-        //     *wire_using_list[wire_id].last().unwrap(),
-        //   );
-        // }
         wire_using_list[wire_id].push((2, c_trace.len()));
         c_wit_list.push(w);
         c_coeff_list.push(c);
@@ -498,21 +389,14 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
     last_coeff_list.push(acc_n_coeff - 1);
   }
 
-  // for wire_id in 0..(n_wires as usize) {
-  //   if wire_using_list[wire_id].len() > 0 {
-  //     wire_prev_list.insert(
-  //       *wire_using_list[wire_id].first().unwrap(),
-  //       *wire_using_list[wire_id].last().unwrap(),
-  //     );
-  //   }
-  // }
+  let a_trace_len = a_trace.len();
 
   let mut flag0 = vec![];
   let mut flag1 = vec![];
   let mut flag2 = vec![];
   for k in 0..(a_coeff_list.len() + b_coeff_list.len() + c_coeff_list.len()) {
     let f0 = 1u64;
-    let f1: u64 = if !last_coeff_list.contains(&(k % n_constraints)) {
+    let f1: u64 = if !last_coeff_list.contains(&((k + a_trace_len - 1) % a_trace_len)) {
       1
     } else {
       0
@@ -520,10 +404,8 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
     let f2: u64 = if last_coeff_list.contains(&k) { 1 } else { 0 };
     flag0.push(TargetFF::from(f0));
     flag1.push(TargetFF::from(f1));
-    flag2.push(TargetFF::from(f2));
+    flag2.push(TargetFF::from(f0 * f2));
   }
-
-  let a_trace_len = a_trace.len();
 
   let mut witness_trace = vec![];
   witness_trace.extend(a_wit_list);
@@ -538,7 +420,7 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
   coefficients.extend(b_coeff_list);
   coefficients.extend(c_coeff_list);
 
-  println!("coefficients: {:?}", coefficients);
+  // println!("coefficients: {:?}", coefficients);
   debug_assert_eq!(coefficients.len(), witness_trace.len());
   debug_assert_eq!(computational_trace.len(), witness_trace.len());
 
@@ -572,7 +454,7 @@ fn verify_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>], proof: StarkPro
   //   );
   // }
   // let permuted_indices = (0..witness_trace.len()).collect::<Vec<_>>();
-  println!("permuted_indices: {:?}", permuted_indices);
+  // println!("permuted_indices: {:?}", permuted_indices);
 
   println!("public_first_indices");
   let mut public_first_indices = vec![];
