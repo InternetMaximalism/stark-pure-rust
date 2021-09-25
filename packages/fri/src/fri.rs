@@ -3,7 +3,8 @@ use std::convert::TryInto;
 // use simple_error::SimpleError;
 use crate::fft::expand_root_of_unity;
 use crate::merkle_tree2::{
-  mk_multi_branch, verify_multi_branch, BlakeDigest, MerkleTree, PermutedParallelMerkleTree, Proof,
+  gen_multi_proofs_in_place, mk_multi_branch, verify_multi_branch, BlakeDigest, MerkleTree,
+  PermutedParallelMerkleTree, Proof,
 };
 use crate::multicore::Worker;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
@@ -92,14 +93,16 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
 
   // Put the values into a Merkle tree. This is the root that the
   // proof will be checked against
-  let encoded_values: Vec<Vec<u8>> = values.iter().map(|x| x.to_bytes_le().unwrap()).collect();
+  let encoded_values = values.iter().map(|x| x.to_bytes_le().unwrap());
   // let m = merklize(&encoded_values);
-  let mut m: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
-    PermutedParallelMerkleTree::new(&worker);
-  m.update(encoded_values);
+  // let mut m: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+  //   PermutedParallelMerkleTree::new(&worker);
+  // m.update(encoded_values.collect::<Vec<Vec<u8>>>());
+  let (_, m_root) =
+    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(encoded_values.clone(), &[]);
 
   // Select a pseudo-random x coordinate
-  let m_root = m.root();
+  // let m_root = m.root().unwrap();
   let special_x = T::from_bytes_le(m_root.as_ref()).unwrap();
 
   // Calculate the "column" at that x coordinate
@@ -130,11 +133,13 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     .iter()
     .map(|p| eval_quartic(*p, special_x))
     .collect();
-  let encoded_column: Vec<Vec<u8>> = column.iter().map(|p| p.to_bytes_le().unwrap()).collect();
-  let mut m2_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
-    PermutedParallelMerkleTree::new(&worker);
-  m2_tree.update(encoded_column);
-  let m2_root = m2_tree.root();
+  let encoded_column = column.iter().map(|p| p.to_bytes_le().unwrap());
+  let (_, m2_root) =
+    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(encoded_column.clone(), &[]);
+  // let mut m2_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+  //   PermutedParallelMerkleTree::new(&worker);
+  // m2_tree.update(encoded_column.collect::<Vec<Vec<u8>>>());
+  // let m2_root = m2_tree.root().unwrap();
   // let m2 = merklize(&encoded_column);
   // let m2_root = get_root(&m2).clone();
 
@@ -145,6 +150,8 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     40,
     exclude_multiples_of,
   );
+  let (column_branches, _) =
+    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(encoded_column, &ys);
 
   // Compute the positions for the values in the polynomial
   let poly_positions: Vec<usize> = ys
@@ -159,12 +166,14 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     // });
     .flatten()
     .collect();
+  let (poly_branches, _) =
+    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(encoded_values, &poly_positions);
 
   // This component of the proof, including Merkle branches
   acc.push(FriProof::Middle {
     root2: m2_root,
-    column_branches: mk_multi_branch(&m2_tree, &ys),
-    poly_branches: mk_multi_branch(&m, &poly_positions),
+    column_branches,
+    poly_branches,
   });
 
   // Recurse...
@@ -311,11 +320,12 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
     return Err("The last element of FRI proofs must be FriProof::Last.");
     // return Err(SimpleError::new("The last element of FRI proofs must be FriProof::Last."));
   };
-  let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
-    PermutedParallelMerkleTree::new(&worker);
-  m_tree.update(last_data.clone());
+  let (_, m_root) = gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(last_data.clone(), &[]);
+  // let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+  //   PermutedParallelMerkleTree::new(&worker);
+  // m_tree.update(last_data.clone());
   // let m_tree = merklize(last_data);
-  assert_eq!(m_tree.root(), merkle_root);
+  assert_eq!(m_root, merkle_root);
 
   // Check the degree of the last_data
   let xs = expand_root_of_unity(root_of_unity);

@@ -624,9 +624,9 @@ pub fn run_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
 
 #[test]
 fn test_run_with_file_path() {
-  let r1cs_file_path = "./tests/mul_bn128.r1cs";
-  let witness_file_path = "./tests/mul_bn128.wtns";
-  let proof_json_path = "./tests/mul_bn128_proof.json";
+  let r1cs_file_path = "./tests/compute.r1cs";
+  let witness_file_path = "./tests/compute.wtns";
+  let proof_json_path = "./tests/compute_proof.json";
   prove_with_file_path(r1cs_file_path, witness_file_path, proof_json_path).unwrap();
   verify_with_file_path(r1cs_file_path, witness_file_path, proof_json_path).unwrap();
 }

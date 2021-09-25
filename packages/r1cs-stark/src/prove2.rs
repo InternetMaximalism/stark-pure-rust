@@ -5,7 +5,9 @@ use ff::PrimeField;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
 use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
 use fri::fri::prove_low_degree;
-use fri::merkle_tree2::{mk_multi_branch, BlakeDigest, MerkleTree, PermutedParallelMerkleTree};
+use fri::merkle_tree2::{
+  gen_multi_proofs_in_place, mk_multi_branch, BlakeDigest, MerkleTree, PermutedParallelMerkleTree,
+};
 use fri::multicore::Worker;
 use fri::poly_utils::{eval_poly_at, lagrange_interp, multi_inv, sparse};
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
@@ -429,7 +431,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   println!("Computed B polynomial");
 
   // Compute their Merkle root
-  let poly_evaluations_str: Vec<Vec<u8>> = p_evaluations
+  let poly_evaluations_str = p_evaluations
     .iter()
     .zip(&a_evaluations)
     .zip(&s_evaluations)
@@ -451,14 +453,15 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
         res.extend(b3_val.to_bytes_le().unwrap());
         res
       },
-    )
-    .collect();
+    );
   println!("Compute Merkle tree");
 
-  let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
-    PermutedParallelMerkleTree::new(&worker);
-  m_tree.update(poly_evaluations_str);
-  let m_root = m_tree.root();
+  let (_, m_root) =
+    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(poly_evaluations_str.clone(), &[]);
+  // let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+  //   PermutedParallelMerkleTree::new(&worker);
+  // m_tree.update(poly_evaluations_str);
+  // let m_root = m_tree.root().unwrap();
   // println!("m_root: {:?}", m_root);
   println!("Computed hash root");
 
@@ -517,14 +520,13 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     );
   }
 
-  let l_evaluations_str: Vec<Vec<u8>> = l_evaluations
-    .iter()
-    .map(|x| x.to_bytes_le().unwrap())
-    .collect();
-  let mut l_m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
-    PermutedParallelMerkleTree::new(&worker);
-  l_m_tree.update(l_evaluations_str);
-  let l_root = l_m_tree.root();
+  let l_evaluations_str = l_evaluations.iter().map(|x| x.to_bytes_le().unwrap());
+  let (_, l_root) =
+    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(l_evaluations_str.clone(), &[]);
+  // let mut l_m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+  //   PermutedParallelMerkleTree::new(&worker);
+  // l_m_tree.update(l_evaluations_str);
+  // let l_root = l_m_tree.root().unwrap();
   // println!("l_m_root: {:?}", l_root);
   println!("Computed random linear combination");
 
@@ -537,7 +539,9 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     skips as u32,
   );
   // println!("{:?}", positions);
-  let linear_comb_branches = mk_multi_branch(&l_m_tree, &positions);
+  let (linear_comb_branches, _) =
+    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(l_evaluations_str, &positions);
+  // let linear_comb_branches = mk_multi_branch(&l_m_tree, &positions);
 
   let mut augmented_positions = vec![];
   for &j in positions.iter().peekable() {
@@ -548,7 +552,11 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
       (j + original_steps / 3 * 2 * skips) % precision,
     ]);
   }
-  let main_branches = mk_multi_branch(&m_tree, &augmented_positions);
+  let (main_branches, _) = gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(
+    poly_evaluations_str,
+    &augmented_positions,
+  );
+  // let main_branches = mk_multi_branch(&m_tree, &augmented_positions);
   println!("Computed {} spot checks", SPOT_CHECK_SECURITY_FACTOR);
 
   // Return the Merkle roots of P and D, the spot check Merkle proofs,

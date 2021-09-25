@@ -9,7 +9,7 @@ cargo run <r1cs_file_path> <witness_file_path> <proof_json_path>
 For example,
 
 ```sh
-cargo run ./tests/mul_bn128.r1cs ./tests/mul_bn128.wtns ./tests/mul_bn128_proof.json
+cargo run ./tests/compute.r1cs ./tests/compute.wtns ./tests/compute_proof.json
 ```
 
 ## API
@@ -18,9 +18,9 @@ cargo run ./tests/mul_bn128.r1cs ./tests/mul_bn128.wtns ./tests/mul_bn128_proof.
 fn sample_code() -> Result<(), std::io::Error> {
   use r1cs_stark::run::{prove_with_file_path, verify_with_file_path};
 
-  let r1cs_file_path = "./tests/mul_bn128.r1cs";
-  let witness_file_path = "./tests/mul_bn128.wtns";
-  let proof_json_path = "./tests/mul_bn128_proof.json";
+  let r1cs_file_path = "./tests/compute.r1cs";
+  let witness_file_path = "./tests/compute.wtns";
+  let proof_json_path = "./tests/compute_proof.json";
 
   // r1cs + witness -> proof
   prove_with_file_path(r1cs_file_path, witness_file_path, proof_json_path)?;

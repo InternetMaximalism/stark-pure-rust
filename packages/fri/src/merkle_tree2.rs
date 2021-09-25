@@ -17,7 +17,7 @@ pub struct Proof<E: Element, H: Digest> {
 
 pub trait MerkleTree<E: Element, H: Digest> {
   fn width(&self) -> usize;
-  fn root(&self) -> H;
+  fn root(&self) -> Option<H>;
   fn update<I: IntoIterator<Item = E>>(&mut self, into: I);
   fn gen_proof(&self, index: usize) -> Proof<E, H>;
 }
@@ -63,6 +63,59 @@ impl<E: Element, H: Digest> SerialMerkleTree<E, H> {
     let nodes = vec![];
     SerialMerkleTree { leaves, nodes }
   }
+
+  pub fn gen_internal_roots<I: IntoIterator<Item = E>>(&mut self, leaves: I, height: u32) -> H {
+    let mut leaves = leaves.into_iter();
+    // let leaves: Vec<E> = leaves.into_iter().collect::<Vec<E>>();
+    // println!("leaves: {:?}", leaves);
+
+    // assert!(is_a_power_of_2(leaves.len()));
+    let chunk_size = 2usize.pow(height);
+
+    let mut internal_roots = vec![H::default(); chunk_size];
+    for (chunk_index, internal_root) in internal_roots.chunks_mut(1).enumerate() {
+      let beginning_index = chunk_index * chunk_size;
+      let mut sub_nodes: Vec<H> = vec![];
+      println!("{}", chunk_index);
+
+      for i in beginning_index..(beginning_index + chunk_size) {
+        let digest = H::hash(leaves.nth(i).get_or_insert(E::default()).as_ref());
+        sub_nodes.push(digest);
+      }
+
+      while sub_nodes.len() >= 2 {
+        sub_nodes = sub_nodes
+          .chunks(2)
+          .map(|node| {
+            let mut message: Vec<u8> = vec![];
+            message.extend(node[0].as_ref());
+            if node.len() > 1 {
+              message.extend(node[1].as_ref());
+            }
+            H::hash(&message)
+          })
+          .collect::<Vec<_>>();
+      }
+
+      internal_root[0] = sub_nodes[0].clone();
+    }
+
+    while internal_roots.len() >= 2 {
+      internal_roots = internal_roots
+        .chunks(2)
+        .map(|node| {
+          let mut message: Vec<u8> = vec![];
+          message.extend(node[0].as_ref());
+          if node.len() > 1 {
+            message.extend(node[1].as_ref());
+          }
+          H::hash(&message)
+        })
+        .collect::<Vec<_>>();
+    }
+
+    internal_roots[0].clone()
+  }
 }
 
 impl<E: Element, H: Digest> MerkleTree<E, H> for SerialMerkleTree<E, H> {
@@ -70,14 +123,19 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for SerialMerkleTree<E, H> {
     self.leaves.len()
   }
 
-  fn root(&self) -> H {
-    self.nodes.last().unwrap()[0].clone()
+  fn root(&self) -> Option<H> {
+    if let Some(n) = self.nodes.last() {
+      Some(n[0].clone())
+    } else {
+      None
+    }
   }
 
   fn update<I: IntoIterator<Item = E>>(&mut self, leaves: I) {
     let leaves: Vec<E> = leaves.into_iter().collect::<Vec<E>>();
     // println!("leaves: {:?}", leaves);
-    assert!(is_a_power_of_2(leaves.len()));
+
+    // assert!(is_a_power_of_2(leaves.len()));
 
     let mut nodes: Vec<Vec<H>> = vec![];
     nodes.push(
@@ -94,7 +152,9 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for SerialMerkleTree<E, H> {
         .map(|node| {
           let mut message: Vec<u8> = vec![];
           message.extend(node[0].as_ref());
-          message.extend(node[1].as_ref());
+          if node.len() > 1 {
+            message.extend(node[1].as_ref());
+          }
           let hash = H::hash(&message);
           // println!("node: {:?}", node[0]);
           // println!("node: {:?}", node[1]);
@@ -111,7 +171,6 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for SerialMerkleTree<E, H> {
 
   // Returns the nodes that need to verify Merkle proof without root and leaf.
   fn gen_proof(&self, index: usize) -> Proof<E, H> {
-    let index = permute4_index(index, self.width());
     let mut tmp = index;
     let mut proof_nodes = vec![];
 
@@ -140,8 +199,12 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for PermutedSerialMerkleTree<E, H> 
     self.leaves.len()
   }
 
-  fn root(&self) -> H {
-    self.nodes.last().unwrap()[0].clone()
+  fn root(&self) -> Option<H> {
+    if let Some(n) = self.nodes.last() {
+      Some(n[0].clone())
+    } else {
+      None
+    }
   }
 
   fn update<I: IntoIterator<Item = E>>(&mut self, leaves: I) {
@@ -197,6 +260,109 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for PermutedSerialMerkleTree<E, H> 
   }
 }
 
+pub fn gen_multi_proofs_in_place<E: Element, H: Digest, I: IntoIterator<Item = E>>(
+  leaves: I,
+  indices: &[usize],
+) -> (Vec<Proof<E, H>>, H) {
+  let start = std::time::Instant::now();
+  let leaves: Vec<E> = leaves.into_iter().collect();
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "collect leaves: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
+  // let leaves: Vec<E> = permute4_values(&leaves);
+  // let indices = permute4_indices(indices, leaves.len());
+  // println!("leaves: {:?}", leaves);
+  assert!(is_a_power_of_2(leaves.len()));
+
+  let mut proofs = vec![
+    Proof {
+      leaf: E::default(),
+      nodes: vec![]
+    };
+    indices.len()
+  ];
+
+  for (i, &index) in indices.iter().enumerate() {
+    proofs[i].leaf = leaves[index].clone()
+  }
+
+  let mut current_nodes: Vec<H> = leaves
+    .iter()
+    .map(|message| H::hash(message.as_ref()))
+    .collect();
+
+  let mut log_nodes_interval = 0;
+  let current_nodes_len = current_nodes.len();
+  while (1 << log_nodes_interval) < current_nodes_len {
+    for (i, &tmp_index) in indices.iter().enumerate() {
+      let twin_index = ((tmp_index >> log_nodes_interval) ^ 1) << log_nodes_interval;
+      proofs[i].nodes.push(current_nodes[twin_index].clone());
+    }
+
+    let nodes_interval = 1 << log_nodes_interval;
+    let chunks_num = nodes_interval << 1;
+    for node in current_nodes.chunks_mut(chunks_num) {
+      let mut message: Vec<u8> = vec![];
+      message.extend(node[0].as_ref());
+      message.extend(node[nodes_interval].as_ref());
+      let hash = H::hash(&message);
+      // println!("node: {:?}", node[0]);
+      // println!("node: {:?}", node[1]);
+      // println!("hash: {:?}", hash);
+      node[0] = hash;
+    }
+
+    log_nodes_interval += 1;
+  }
+
+  let merkle_root = current_nodes[0].clone();
+
+  (proofs, merkle_root)
+}
+
+#[test]
+fn test_serial_internal_roots() {
+  let leaves: Vec<Vec<u8>> = vec![
+    hex::decode("7fffffff").unwrap(),
+    hex::decode("80000000").unwrap(),
+    hex::decode("00000003").unwrap(),
+    hex::decode("00000000").unwrap(),
+    hex::decode("7ffffffe").unwrap(),
+    hex::decode("80000001").unwrap(),
+    hex::decode("00000004").unwrap(),
+    hex::decode("00000001").unwrap(),
+    hex::decode("7ffffffd").unwrap(),
+    hex::decode("80000002").unwrap(),
+    hex::decode("00000005").unwrap(),
+    hex::decode("00000002").unwrap(),
+    hex::decode("7ffffffc").unwrap(),
+    hex::decode("80000003").unwrap(),
+    hex::decode("00000006").unwrap(),
+    hex::decode("00000003").unwrap(),
+  ];
+
+  let indices = [2, 7, 4];
+  let (merkle_proofs, merkle_root) =
+    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(leaves.clone(), &indices);
+
+  let mut merkle_tree: SerialMerkleTree<Vec<u8>, BlakeDigest> = SerialMerkleTree::new();
+  merkle_tree.update(leaves.clone());
+  let merkle_root2 = merkle_tree.root().unwrap();
+  let merkle_proof20 = merkle_tree.gen_proof(indices[0]);
+  let merkle_proof21 = merkle_tree.gen_proof(indices[1]);
+  let merkle_proof22 = merkle_tree.gen_proof(indices[2]);
+  assert_eq!(merkle_proofs[0].leaf, merkle_proof20.leaf);
+  assert_eq!(merkle_proofs[0].nodes, merkle_proof20.nodes);
+  assert_eq!(merkle_proofs[1].leaf, merkle_proof21.leaf);
+  assert_eq!(merkle_proofs[1].nodes, merkle_proof21.nodes);
+  assert_eq!(merkle_proofs[2].leaf, merkle_proof22.leaf);
+  assert_eq!(merkle_proofs[2].nodes, merkle_proof22.nodes);
+  assert_eq!(merkle_root, merkle_root2);
+}
+
 #[test]
 fn test_serial_single_proof() {
   let index = 2;
@@ -222,7 +388,7 @@ fn test_serial_single_proof() {
   let mut merkle_tree: PermutedSerialMerkleTree<Vec<u8>, BlakeDigest> =
     PermutedSerialMerkleTree::new();
   merkle_tree.update(leaves);
-  let merkle_root = merkle_tree.root();
+  let merkle_root = merkle_tree.root().unwrap();
   assert_eq!(
     merkle_root,
     BlakeDigest(vec![
@@ -280,8 +446,12 @@ impl<'a, E: Element, H: Digest> MerkleTree<E, H> for PermutedParallelMerkleTree<
     self.leaves.len()
   }
 
-  fn root(&self) -> H {
-    self.nodes.last().unwrap()[0].clone()
+  fn root(&self) -> Option<H> {
+    if let Some(n) = self.nodes.last() {
+      Some(n[0].clone())
+    } else {
+      None
+    }
   }
 
   fn update<I: IntoIterator<Item = E>>(&mut self, leaves: I) {
@@ -392,7 +562,7 @@ fn test_parallel_single_proof() {
   let worker = Worker::new();
   let mut merkle_tree = PermutedParallelMerkleTree::<'_, Vec<u8>, BlakeDigest>::new(&worker);
   merkle_tree.update(leaves);
-  let merkle_root = merkle_tree.root();
+  let merkle_root = merkle_tree.root().unwrap();
   assert_eq!(
     merkle_root,
     BlakeDigest(vec![
@@ -428,13 +598,13 @@ fn test_parallel_single_proof() {
 }
 
 impl<E: Element, H: Digest> Proof<E, H> {
-  fn height(&self) -> usize {
+  pub fn height(&self) -> usize {
     self.nodes.len()
   }
 
   pub fn validate(&self, root: &H, index: usize) -> Result<E, Error> {
-    let num_of_leaves = 2usize.pow(self.height() as u32);
-    let index = permute4_index(index, num_of_leaves);
+    // let num_of_leaves = 2usize.pow(self.height() as u32);
+    // let index = permute4_index(index, num_of_leaves);
     let mut tmp = index;
 
     let mut current_node = H::hash(self.leaf.as_ref());
@@ -454,6 +624,34 @@ impl<E: Element, H: Digest> Proof<E, H> {
     Ok(self.leaf.clone())
   }
 }
+
+// impl<E: Element, H: Digest> PermutedProof<E, H> {
+//   pub fn height(&self) -> usize {
+//     self.nodes.len()
+//   }
+
+//   pub fn validate(&self, root: &H, index: usize) -> Result<E, Error> {
+//     let num_of_leaves = 2usize.pow(self.height() as u32);
+//     let index = permute4_index(index, num_of_leaves);
+//     let mut tmp = index;
+
+//     let mut current_node = H::hash(self.leaf.as_ref());
+//     for node in self.nodes.iter() {
+//       let mut message: Vec<u8> = vec![];
+//       if tmp % 2 == 0 {
+//         message.extend(current_node.as_ref());
+//         message.extend(node.as_ref());
+//       } else {
+//         message.extend(node.as_ref());
+//         message.extend(current_node.as_ref());
+//       }
+//       current_node = H::hash(&message);
+//       tmp /= 2;
+//     }
+//     assert_eq!(current_node, root.clone());
+//     Ok(self.leaf.clone())
+//   }
+// }
 
 pub fn mk_multi_branch<E: Element, H: Digest, T: MerkleTree<E, H>>(
   tree: &T,
@@ -493,7 +691,7 @@ fn test_serial_multi_proof() {
   let mut merkle_tree: PermutedSerialMerkleTree<Vec<u8>, BlakeDigest> =
     PermutedSerialMerkleTree::new();
   merkle_tree.update(leaves);
-  let merkle_root = merkle_tree.root();
+  let merkle_root = merkle_tree.root().unwrap();
   assert_eq!(
     merkle_root,
     BlakeDigest(vec![
@@ -527,7 +725,7 @@ fn test_parallel_multi_proof() {
   let mut merkle_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
     PermutedParallelMerkleTree::new(&worker);
   merkle_tree.update(leaves);
-  let merkle_root = merkle_tree.root();
+  let merkle_root = merkle_tree.root().unwrap();
   assert_eq!(
     merkle_root,
     BlakeDigest(vec![
