@@ -58,6 +58,7 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
   type TargetFF = Fp; // TODO: Use r1cs.header.field_size.
 
   println!("Generate coefficients");
+  let start = std::time::Instant::now();
   let mut a_wit_list: Vec<TargetFF> = vec![];
   let mut b_wit_list: Vec<TargetFF> = vec![];
   let mut c_wit_list: Vec<TargetFF> = vec![];
@@ -178,6 +179,13 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> StarkProo
     acc_n_coeff += n_coeff as usize;
     last_coeff_list.push(acc_n_coeff - 1);
   }
+
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Generated coefficients: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
 
   let a_trace_len = a_trace.len();
 

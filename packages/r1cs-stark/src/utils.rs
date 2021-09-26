@@ -9,16 +9,16 @@ pub fn parse_be_bytes_to_decimal(value: &[u8]) -> String {
   BigUint::from_bytes_be(value).to_str_radix(10)
 }
 
-// pub fn u32_be_bytes_to_u8_be_bytes(values: [u32; 8]) -> [u8; 32] {
-//   let mut output = [0u8; 32];
-//   for (i, value) in values.iter().enumerate() {
-//     for (j, &v) in value.to_be_bytes().iter().enumerate() {
-//       output[4 * i + j] = v;
-//     }
-//   }
+pub fn u32_be_bytes_to_u8_be_bytes(values: [u32; 8]) -> [u8; 32] {
+  let mut output = [0u8; 32];
+  for (i, value) in values.iter().enumerate() {
+    for (j, &v) in value.to_be_bytes().iter().enumerate() {
+      output[4 * i + j] = v;
+    }
+  }
 
-//   output
-// }
+  output
+}
 
 // pub fn u32_le_bytes_to_u8_be_bytes(values: [u32; 8]) -> [u8; 32] {
 //   let mut output = [0u8; 32];
@@ -105,6 +105,7 @@ pub fn r1cs_computational_trace<T: PrimeField>(coefficients: &[T], witness: &[T]
 pub struct StarkProof {
   pub m_root: BlakeDigest,
   pub l_root: BlakeDigest,
+  pub a_root: BlakeDigest,
   pub main_branches: Vec<Proof<Vec<u8>, BlakeDigest>>,
   pub linear_comb_branches: Vec<Proof<Vec<u8>, BlakeDigest>>,
   pub fri_proof: Vec<FriProof>,

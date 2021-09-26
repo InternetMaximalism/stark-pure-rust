@@ -149,7 +149,10 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     column.len() as u32,
     40,
     exclude_multiples_of,
-  );
+  )
+  .iter()
+  .map(|&i| i as usize)
+  .collect::<Vec<usize>>();
   let (column_branches, _) =
     gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(encoded_column, &ys);
 
@@ -253,7 +256,10 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
       (rou_deg / 4).try_into().unwrap(),
       40,
       exclude_multiples_of,
-    );
+    )
+    .iter()
+    .map(|&i| i as usize)
+    .collect::<Vec<usize>>();
 
     // Compute the positions for the values in the polynomial
     let mut poly_positions: Vec<usize> = vec![];

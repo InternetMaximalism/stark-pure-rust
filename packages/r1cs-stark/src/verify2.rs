@@ -10,6 +10,7 @@ use fri::multicore::Worker;
 use fri::poly_utils::{eval_poly_at, lagrange_interp, sparse};
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
 use num::bigint::BigUint;
+use std::convert::TryInto;
 
 pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   proof: StarkProof,
@@ -53,6 +54,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let StarkProof {
     m_root,
     l_root,
+    a_root,
     main_branches,
     linear_comb_branches,
     fri_proof,
@@ -111,7 +113,10 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     precision as u32,
     SPOT_CHECK_SECURITY_FACTOR,
     skips as u32,
-  );
+  )
+  .iter()
+  .map(|&i| i as usize)
+  .collect::<Vec<usize>>();
   let mut augmented_positions = vec![];
   for &j in positions.iter().peekable() {
     // println!(
@@ -222,9 +227,21 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   };
   println!("Computed boundary polynomial");
 
-  let r1 = T::zero(); // TODO: randomize
-  let r2 = T::one(); // TODO: randomize
-  let r3 = T::multiplicative_generator(); // TODO: randomize
+  let accumulator_randomness = get_pseudorandom_indices(a_root.as_ref(), precision as u32, 24, 0);
+  let r1 = T::from_bytes_le(&u32_be_bytes_to_u8_be_bytes(
+    accumulator_randomness[0..8].try_into().unwrap(),
+  ))
+  .unwrap();
+  let r2 = T::from_bytes_le(&u32_be_bytes_to_u8_be_bytes(
+    accumulator_randomness[8..16].try_into().unwrap(),
+  ))
+  .unwrap();
+  let r3 = T::from_bytes_le(&u32_be_bytes_to_u8_be_bytes(
+    accumulator_randomness[16..24].try_into().unwrap(),
+  ))
+  .unwrap();
+  println!("r: {:?} {:?} {:?}", r1, r2, r3);
+
   for (i, &pos) in positions.iter().enumerate() {
     let x = xs[pos]; // g2.pow_vartime(&parse_bytes_to_u64_vec(&pos.to_le_bytes()));
 

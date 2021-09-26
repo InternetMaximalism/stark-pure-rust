@@ -12,6 +12,7 @@ use fri::multicore::Worker;
 use fri::poly_utils::{eval_poly_at, lagrange_interp, multi_inv, sparse};
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
 use num::bigint::BigUint;
+use std::convert::TryInto;
 
 pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   witness_trace: &[T],
@@ -128,9 +129,16 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
 
   let worker = Worker::new();
 
+  let start = std::time::Instant::now();
   let s_polynomial = inv_best_fft(witness_trace.clone(), &g1, &worker, log_order_of_g1); // S(X)
   let s_evaluations = best_fft(s_polynomial, &g2, &worker, log_order_of_g2);
   // println!("s_evaluations: {:?}", s_evaluations);
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "generate extended witness: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
   println!("Converted witness trace into a polynomial and low-degree extended it");
 
   // println!("trace: {:?}", computational_trace);
@@ -237,13 +245,38 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // println!("ext_permuted_indices: {:?}", ext_permuted_indices);
   println!("Computed extended permuted index polynomial");
 
+  let accumulator_str = permuted_indices
+    .iter()
+    .zip(&witness_trace)
+    .map(|(&p_val, &a_val)| {
+      let mut res = vec![];
+      res.extend(p_val.to_le_bytes());
+      res.extend(a_val.to_bytes_le().unwrap());
+      res
+    });
+  let (_, a_root) =
+    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(accumulator_str.clone(), &[]);
+  let accumulator_randomness =
+    get_pseudorandom_indices(a_root.as_ref(), precision as u32, 3 * 8, 0);
+
   let mut a_nmr_evaluations: Vec<T> = vec![];
   let mut a_dnm_evaluations: Vec<T> = vec![];
   let mut val_nmr_list = vec![];
   let mut val_dnm_list = vec![];
-  let r1 = T::zero(); // TODO: randomize
-  let r2 = T::one(); // TODO: randomize
-  let r3 = T::multiplicative_generator(); // TODO: randomize
+  let r1 = T::from_bytes_le(&u32_be_bytes_to_u8_be_bytes(
+    accumulator_randomness[0..8].try_into().unwrap(),
+  ))
+  .unwrap();
+  let r2 = T::from_bytes_le(&u32_be_bytes_to_u8_be_bytes(
+    accumulator_randomness[8..16].try_into().unwrap(),
+  ))
+  .unwrap();
+  let r3 = T::from_bytes_le(&u32_be_bytes_to_u8_be_bytes(
+    accumulator_randomness[16..24].try_into().unwrap(),
+  ))
+  .unwrap();
+  println!("r: {:?} {:?} {:?}", r1, r2, r3);
+
   for j in 0..steps {
     let last_acc_nmr = if j != 0 {
       a_nmr_evaluations.last().unwrap().clone()
@@ -310,6 +343,8 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let inv_z3_evaluations = multi_inv(&z3_evaluations);
   println!("Computed Q3 polynomial");
 
+  let start = std::time::Instant::now();
+
   let d1_evaluations: Vec<T> = q1_evaluations
     .iter()
     .zip(&inv_z1_evaluations)
@@ -328,7 +363,14 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     .zip(&inv_z3_evaluations)
     .map(|(&q3, &z3i)| q3 * z3i)
     .collect();
-  println!("Computed D polynomial");
+
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Computed D polynomial: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
+  // println!("Computed D polynomial");
 
   // let interpolant = {
   //   let mut x_vals = vec![];
@@ -454,7 +496,8 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
         res
       },
     );
-  println!("Compute Merkle tree");
+  println!("Compute Merkle tree for the plain evaluations");
+  let start = std::time::Instant::now();
 
   let (_, m_root) =
     gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(poly_evaluations_str.clone(), &[]);
@@ -463,7 +506,13 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // m_tree.update(poly_evaluations_str);
   // let m_root = m_tree.root().unwrap();
   // println!("m_root: {:?}", m_root);
-  println!("Computed hash root");
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Computed Merkle root for the plain evaluations: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
+  // println!("Computed Merkle root for the plain evaluations");
 
   // Based on the hashes of P, D and B, we select a random linear combination
   // of P * x^steps, P, B * x^steps, B and D, and prove the low-degreeness of that,
@@ -513,14 +562,17 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
         + k4 * p_of_x * x_to_the_steps
         + k5 * b_of_x
         + k6 * b_of_x * x_to_the_steps
-        + k7 * b3_of_x
-        + k8 * b3_of_x * x_to_the_steps
+        + k7 * b3_of_x // TODO
+        + k8 * b3_of_x * x_to_the_steps // TODO
         + k9 * a_of_x
         + k10 * s_of_x,
     );
   }
 
   let l_evaluations_str = l_evaluations.iter().map(|x| x.to_bytes_le().unwrap());
+
+  println!("Compute Merkle tree for the linear combination of evaluations");
+  let start = std::time::Instant::now();
   let (_, l_root) =
     gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(l_evaluations_str.clone(), &[]);
   // let mut l_m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
@@ -528,7 +580,13 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // l_m_tree.update(l_evaluations_str);
   // let l_root = l_m_tree.root().unwrap();
   // println!("l_m_root: {:?}", l_root);
-  println!("Computed random linear combination");
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Computed Merkle root for the linear combination of evaluations: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
+  // println!("Computed Merkle root for the linear combination of evaluations");
 
   // Do some spot checks of the Merkle tree at pseudo-random coordinates, excluding
   // multiples of `skips`
@@ -537,11 +595,22 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     precision as u32,
     SPOT_CHECK_SECURITY_FACTOR,
     skips as u32,
-  );
+  )
+  .iter()
+  .map(|&i| i as usize)
+  .collect::<Vec<usize>>();
   // println!("{:?}", positions);
+
+  let start = std::time::Instant::now();
   let (linear_comb_branches, _) =
     gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(l_evaluations_str, &positions);
   // let linear_comb_branches = mk_multi_branch(&l_m_tree, &positions);
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Computed Merkle root for the linear combination of evaluations: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
 
   let mut augmented_positions = vec![];
   for &j in positions.iter().peekable() {
@@ -552,10 +621,19 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
       (j + original_steps / 3 * 2 * skips) % precision,
     ]);
   }
+
+  let start = std::time::Instant::now();
   let (main_branches, _) = gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(
     poly_evaluations_str,
     &augmented_positions,
   );
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Computed Merkle root for the plain evaluations: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
+
   // let main_branches = mk_multi_branch(&m_tree, &augmented_positions);
   println!("Computed {} spot checks", SPOT_CHECK_SECURITY_FACTOR);
 
@@ -566,6 +644,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   StarkProof {
     m_root,
     l_root,
+    a_root,
     main_branches,
     linear_comb_branches,
     fri_proof,

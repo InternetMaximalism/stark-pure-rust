@@ -38,7 +38,7 @@ pub fn get_pseudorandom_indices(
   modulus: u32,
   count: usize,
   exclude_multiples_of: u32,
-) -> Vec<usize> {
+) -> Vec<u32> {
   assert!(modulus < 2u32.pow(24));
   let mut data = seed.to_vec();
   while data.len() < 4 * count {
@@ -49,7 +49,6 @@ pub fn get_pseudorandom_indices(
     return (0..(count * 4))
       .step_by(4)
       .map(|i| u32::from_be_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]) % modulus)
-      .map(|i| i.try_into().unwrap())
       .collect();
   }
 
@@ -58,7 +57,6 @@ pub fn get_pseudorandom_indices(
     .step_by(4)
     .map(|i| u32::from_be_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]) % real_modulus)
     .map(|i| i + 1 + i / (exclude_multiples_of - 1))
-    .map(|i| i.try_into().unwrap())
     .collect();
 }
 
