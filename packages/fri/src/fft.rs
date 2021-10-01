@@ -337,12 +337,22 @@ pub fn best_fft<T: PrimeField>(
     evaluations.append(&mut padding);
   }
 
+  let start = std::time::Instant::now();
+
   let cpus = worker.cpus;
   if cpus == 1 || order_of_root <= cpus {
     serial_fft(&mut evaluations, root_of_unity, log_order_of_root);
   } else {
     parallel_fft(&mut evaluations, root_of_unity, worker, log_order_of_root);
   }
+
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Calculated FFT: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
+
   evaluations
 }
 
@@ -421,14 +431,14 @@ pub fn div_polys<T: PrimeField>(a: &[T], b: &[T], root_of_unity: T) -> Vec<T> {
   _inv_fft(&mul_values, &roots_rev)
 }
 
-#[test]
-fn test_div_polys_via_fft() {
-  use ff_utils::f7::F7;
+// #[test]
+// fn test_div_polys_via_fft() {
+//   use ff_utils::f7::F7;
 
-  let g2 = F7::multiplicative_generator();
-  let a: Vec<F7> = [3, 1, 0, 3, 1, 0].iter().map(|x| F7::from(*x)).collect();
-  let b: Vec<F7> = [2, 3, 1].iter().map(|x| F7::from(*x)).collect();
-  let answer: Vec<F7> = [5, 0, 1].iter().map(|x| F7::from(*x)).collect();
-  let res = div_polys(&a, &b, g2);
-  assert_eq!(res, answer);
-}
+//   let g2 = F7::multiplicative_generator();
+//   let a: Vec<F7> = [3, 1, 0, 3, 1, 0].iter().map(|x| F7::from(*x)).collect();
+//   let b: Vec<F7> = [2, 3, 1].iter().map(|x| F7::from(*x)).collect();
+//   let answer: Vec<F7> = [5, 0, 1].iter().map(|x| F7::from(*x)).collect();
+//   let res = div_polys(&a, &b, g2);
+//   assert_eq!(res, answer);
+// }

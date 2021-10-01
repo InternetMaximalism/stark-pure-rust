@@ -1,7 +1,7 @@
 use ff::PrimeField;
-use fri::merkle_tree2::Proof;
+use fri::fri::FriProof;
+use fri::merkle_tree3::{BlakeDigest, Proof};
 use fri::utils::blake;
-use fri::{fri::FriProof, merkle_tree2::BlakeDigest};
 use num::bigint::BigUint;
 use serde::{Deserialize, Serialize};
 

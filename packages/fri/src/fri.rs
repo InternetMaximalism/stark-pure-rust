@@ -1,11 +1,10 @@
 use ff::PrimeField;
 use std::convert::TryInto;
 // use simple_error::SimpleError;
+use crate::delayed::Delayed;
 use crate::fft::expand_root_of_unity;
-use crate::merkle_tree2::{
-  gen_multi_proofs_in_place, mk_multi_branch, verify_multi_branch, BlakeDigest, MerkleTree,
-  PermutedParallelMerkleTree, Proof,
-};
+use crate::lazily;
+use crate::merkle_tree3::{gen_multi_proofs_multi_core, verify_multi_branch, BlakeDigest, Proof};
 use crate::multicore::Worker;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
 // use crate::permuted_tree::{bin_length, get_root, merklize, mk_multi_branch, verify_multi_branch};
@@ -93,13 +92,16 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
 
   // Put the values into a Merkle tree. This is the root that the
   // proof will be checked against
-  let encoded_values = values.iter().map(|x| x.to_bytes_le().unwrap());
+  let encoded_values = values
+    .iter()
+    .map(|x| lazily!(x.to_bytes_le().unwrap()))
+    .collect::<Vec<_>>();
   // let m = merklize(&encoded_values);
   // let mut m: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
   //   PermutedParallelMerkleTree::new(&worker);
   // m.update(encoded_values.collect::<Vec<Vec<u8>>>());
   let (_, m_root) =
-    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(encoded_values.clone(), &[]);
+    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&encoded_values, &[], &worker);
 
   // Select a pseudo-random x coordinate
   // let m_root = m.root().unwrap();
@@ -133,9 +135,12 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     .iter()
     .map(|p| eval_quartic(*p, special_x))
     .collect();
-  let encoded_column = column.iter().map(|p| p.to_bytes_le().unwrap());
+  let encoded_column = column
+    .iter()
+    .map(|p| lazily!(p.to_bytes_le().unwrap()))
+    .collect::<Vec<_>>();
   let (_, m2_root) =
-    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(encoded_column.clone(), &[]);
+    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&encoded_column, &[], &worker);
   // let mut m2_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
   //   PermutedParallelMerkleTree::new(&worker);
   // m2_tree.update(encoded_column.collect::<Vec<Vec<u8>>>());
@@ -152,9 +157,9 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   )
   .iter()
   .map(|&i| i as usize)
-  .collect::<Vec<usize>>();
+  .collect::<Vec<_>>();
   let (column_branches, _) =
-    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(encoded_column, &ys);
+    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&encoded_column, &ys, &worker);
 
   // Compute the positions for the values in the polynomial
   let poly_positions: Vec<usize> = ys
@@ -170,7 +175,7 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     .flatten()
     .collect();
   let (poly_branches, _) =
-    gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(encoded_values, &poly_positions);
+    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&encoded_values, &poly_positions, &worker);
 
   // This component of the proof, including Merkle branches
   acc.push(FriProof::Middle {
@@ -321,12 +326,12 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
 
   // Check the Merkle root matches up
   let last_data = if let Some(FriProof::Last { last }) = proof.last() {
-    last.to_vec()
+    last.iter().map(|v| lazily!(v.to_vec())).collect::<Vec<_>>()
   } else {
     return Err("The last element of FRI proofs must be FriProof::Last.");
     // return Err(SimpleError::new("The last element of FRI proofs must be FriProof::Last."));
   };
-  let (_, m_root) = gen_multi_proofs_in_place::<Vec<u8>, BlakeDigest, _>(last_data.clone(), &[]);
+  let (_, m_root) = gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&last_data, &[], &worker);
   // let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
   //   PermutedParallelMerkleTree::new(&worker);
   // m_tree.update(last_data.clone());

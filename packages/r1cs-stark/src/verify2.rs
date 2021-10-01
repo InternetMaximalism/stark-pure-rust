@@ -5,7 +5,7 @@ use ff::PrimeField;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
 use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
 use fri::fri::verify_low_degree_proof;
-use fri::merkle_tree2::verify_multi_branch;
+use fri::merkle_tree3::verify_multi_branch;
 use fri::multicore::Worker;
 use fri::poly_utils::{eval_poly_at, lagrange_interp, sparse};
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
@@ -240,7 +240,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     accumulator_randomness[16..24].try_into().unwrap(),
   ))
   .unwrap();
-  println!("r: {:?} {:?} {:?}", r1, r2, r3);
+  // println!("r: {:?} {:?} {:?}", r1, r2, r3);
 
   for (i, &pos) in positions.iter().enumerate() {
     let x = xs[pos]; // g2.pow_vartime(&parse_bytes_to_u64_vec(&pos.to_le_bytes()));
