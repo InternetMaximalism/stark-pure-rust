@@ -178,6 +178,18 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
 
     // Q1(j) = F0(j) * (P(j) - F1(j) * P(j - 1) - K(j) * S(j))
     let q1_of_x = f0 * (p_of_x - f1 * p_of_prev_x - k_of_x * s_of_x);
+    // if j % skips == 0
+    //   && f0 != T::zero()
+    //   && f1 != T::zero()
+    //   && p_of_prev_x.to_bytes_be().unwrap() > p_of_x.to_bytes_be().unwrap()
+    // {
+    //   println!(
+    //     "overflow: {:?} {:?} {:?}",
+    //     p_of_prev_x,
+    //     p_of_x,
+    //     k_of_x * s_of_x
+    //   );
+    // }
     q1_evaluations.push(q1_of_x);
     // if j % skips == 0 {
     //   println!(
@@ -347,7 +359,14 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     .zip(&inv_z1_evaluations)
     .map(|(&q1, &z1i)| q1 * z1i)
     .collect();
-  // println!("d1_evaluations: {:?}", d1_evaluations);
+
+  for (&q, &z) in q1_evaluations.iter().zip(&inv_z1_evaluations) {
+    if z == T::zero() {
+      if q != T::zero() {
+        println!("d1: {:?} {:?}", q, z);
+      }
+    }
+  }
 
   let d2_evaluations: Vec<T> = q2_evaluations
     .iter()
@@ -355,11 +374,27 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     .map(|(&q2, &z2i)| q2 * z2i)
     .collect();
 
+  for (&q, &z) in q2_evaluations.iter().zip(&inv_z1_evaluations) {
+    if z == T::zero() {
+      if q != T::zero() {
+        println!("d2: {:?} {:?}", q, z);
+      }
+    }
+  }
+
   let d3_evaluations: Vec<T> = q3_evaluations
     .iter()
     .zip(&inv_z3_evaluations)
     .map(|(&q3, &z3i)| q3 * z3i)
     .collect();
+
+  for (&q, &z) in q3_evaluations.iter().zip(&inv_z3_evaluations) {
+    if z == T::zero() {
+      if q != T::zero() {
+        println!("d3: {:?} {:?}", q, z);
+      }
+    }
+  }
 
   println!("Computed D polynomial");
 

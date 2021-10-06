@@ -190,6 +190,8 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
 
   let a_trace_len = a_trace.len();
 
+  let start = std::time::Instant::now();
+
   let mut flag0 = vec![];
   let mut flag1 = vec![];
   let mut flag2 = vec![];
@@ -205,6 +207,13 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
     flag1.push(TargetFF::from(f1));
     flag2.push(TargetFF::from(f0 * f2));
   }
+
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Generated flags: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
 
   let mut witness_trace = vec![];
   witness_trace.extend(a_wit_list);
@@ -228,7 +237,7 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
   println!("Done generating computational trace");
 
   println!("permuted_indices");
-  // TODO: take a long time
+  let start = std::time::Instant::now();
   let mut permuted_indices = vec![0usize; computational_trace.len()];
   for vs in wire_using_list.iter() {
     if vs.len() == 0 {
@@ -243,8 +252,15 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
   }
   // println!("permuted_indices: {:?}", permuted_indices);
   // println!("wire_using_list: {:?}", wire_using_list);
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Generated flags: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
 
   println!("public_first_indices");
+  let start = std::time::Instant::now();
   let mut public_first_indices = vec![];
   for w in 0..public_wires.len() {
     if wire_using_list[w].len() > 0 {
@@ -253,6 +269,12 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
     }
   }
   // println!("public_first_indices: {:?}", public_first_indices);
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Generated flags: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
 
   Ok(mk_r1cs_proof(
     &witness_trace,

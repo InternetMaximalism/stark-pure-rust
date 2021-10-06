@@ -1,6 +1,5 @@
 pub mod delayed;
 pub mod fft;
-pub mod file_io;
 pub mod fri;
 pub mod merkle_tree3;
 pub mod multicore;
