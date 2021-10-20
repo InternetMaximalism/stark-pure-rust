@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
+ff_utils = { version = "0.1.0", path = "./packages/ff_utils" }
+commitment = { version = "0.1.0", path = "./packages/commitment" }
 fri = { version = "0.1.0", path = "./packages/fri" }
 r1cs-stark = { version = "0.1.0", path = "./packages/r1cs-stark" }
 

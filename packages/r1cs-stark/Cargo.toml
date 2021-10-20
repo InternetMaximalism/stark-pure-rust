@@ -4,12 +4,18 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-circom2bellman_core = { version = "0.1.0", path = "../circom2bellman_core" }
-fri = { version = "0.1.0", path = "../fri" }
 ff = "0.10.0"
 num = "0.4"
 serde_json = "1.0"
 serde = { version = "^1.0.101", features = ["derive"] }
+bytes = "0.6.0"
+futures = {package = "futures", version = "0.3", default_features = false, features = ["executor", "thread-pool"]}
+num_cpus = "1"
+crossbeam = "0.7"
+circom2bellman_core = { version = "0.1.0", path = "../circom2bellman_core" }
+ff_utils = { version = "0.1.0", path = "../ff_utils" }
+commitment = { version = "0.1.0", path = "../commitment" }
+fri = { version = "0.1.0", path = "../fri" }
 
 [lib]
 name = "r1cs_stark"
