@@ -19,6 +19,7 @@ futures = {package = "futures", version = "0.3", default_features = false, featu
 num_cpus = "1"
 crossbeam = "0.7"
 ff_utils = { version = "0.1.0", path = "../ff_utils" }
+commitment = { version = "0.1.0", path = "../commitment" }
 
 [lib]
 name = "fri"

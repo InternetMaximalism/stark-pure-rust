@@ -109,6 +109,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "commitment"
+version = "0.1.0"
+dependencies = [
+ "blake2",
+ "crossbeam",
+ "ff_utils",
+ "futures",
+ "hex",
+ "num_cpus",
+ "serde",
+]
+
+[[package]]
 name = "crossbeam"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -312,6 +325,7 @@ dependencies = [
  "bitvec",
  "blake2",
  "byteorder",
+ "commitment",
  "crossbeam",
  "ff",
  "ff_utils",
@@ -725,6 +739,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "circom2bellman_core",
+ "commitment",
  "crossbeam",
  "ff",
  "ff_utils",
@@ -851,6 +866,8 @@ checksum = "c307a32c1c5c437f38c7fd45d753050587732ba8628319fbdf12a7e289ccc590"
 name = "stark-pure-rust"
 version = "0.1.0"
 dependencies = [
+ "commitment",
+ "ff_utils",
  "fri",
  "r1cs-stark",
 ]

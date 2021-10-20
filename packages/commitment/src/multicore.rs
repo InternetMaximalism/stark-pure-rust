@@ -21,7 +21,7 @@ use self::futures::future::lazy;
 
 #[derive(Clone)]
 pub struct Worker {
-    pub(crate) cpus: usize,
+    pub cpus: usize,
     pool: ThreadPool,
 }
 

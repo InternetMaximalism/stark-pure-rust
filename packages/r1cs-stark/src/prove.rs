@@ -1,12 +1,12 @@
 use crate::utils::*;
+use commitment::delayed::Delayed;
+use commitment::lazily;
+use commitment::merkle_tree::{gen_multi_proofs_multi_core, BlakeDigest};
+use commitment::multicore::Worker;
 use ff::PrimeField;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
-use fri::delayed::Delayed;
 use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
 use fri::fri::prove_low_degree;
-use fri::lazily;
-use fri::merkle_tree::{gen_multi_proofs_multi_core, BlakeDigest};
-use fri::multicore::Worker;
 use fri::poly_utils::{eval_poly_at, multi_inv};
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
 use num::bigint::BigUint;

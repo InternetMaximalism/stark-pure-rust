@@ -1,11 +1,13 @@
 use ff::PrimeField;
 use std::convert::TryInto;
 // use simple_error::SimpleError;
-use crate::delayed::Delayed;
 use crate::fft::expand_root_of_unity;
-use crate::lazily;
-use crate::merkle_tree::{gen_multi_proofs_multi_core, verify_multi_branch, BlakeDigest, Proof};
-use crate::multicore::Worker;
+use commitment::delayed::Delayed;
+use commitment::lazily;
+use commitment::merkle_tree::{
+  gen_multi_proofs_multi_core, verify_multi_branch, BlakeDigest, Proof,
+};
+use commitment::multicore::Worker;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
 // use crate::permuted_tree::{bin_length, get_root, merklize, mk_multi_branch, verify_multi_branch};
 use crate::poly_utils::{eval_poly_at, eval_quartic, lagrange_interp, multi_interp_4};

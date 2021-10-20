@@ -1,10 +1,10 @@
 use crate::utils::*;
+use commitment::merkle_tree::verify_multi_branch;
+use commitment::multicore::Worker;
 use ff::PrimeField;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
 use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
 use fri::fri::verify_low_degree_proof;
-use fri::merkle_tree::verify_multi_branch;
-use fri::multicore::Worker;
 use fri::poly_utils::eval_poly_at;
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
 use num::bigint::BigUint;

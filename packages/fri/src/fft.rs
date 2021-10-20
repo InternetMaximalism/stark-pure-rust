@@ -1,4 +1,4 @@
-use crate::multicore::Worker;
+use commitment::multicore::Worker;
 use ff::PrimeField;
 use std::convert::TryInto;
 
