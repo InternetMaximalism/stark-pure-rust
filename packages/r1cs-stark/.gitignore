@@ -1,1 +1,3 @@
-/tests/mul_bn128_proof.json
+target
+/tests/*_proof.json
+/tests/*_public.json

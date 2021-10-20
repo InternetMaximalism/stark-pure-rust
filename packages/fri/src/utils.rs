@@ -33,12 +33,58 @@ pub fn is_a_power_of_2(x: usize) -> bool {
   }
 }
 
+pub fn log2_ceil(value: usize) -> usize {
+  if value == 0 {
+    panic!("The first argument must be a positive number.")
+  }
+
+  if value == 1 {
+    return 0;
+  }
+
+  let mut log_value = 1;
+  let mut tmp_value = value - 1;
+  while tmp_value > 1 {
+    tmp_value /= 2;
+    log_value += 1;
+  }
+
+  log_value
+}
+
+#[test]
+#[should_panic]
+pub fn test_error_log2_ceil() {
+  log2_ceil(0);
+}
+
+#[test]
+pub fn test_log2_ceil() {
+  let res0 = log2_ceil(1);
+  assert_eq!(res0, 0);
+
+  let res1 = log2_ceil(2);
+  assert_eq!(res1, 1);
+
+  let res2 = log2_ceil(3);
+  assert_eq!(res2, 2);
+
+  let res3 = log2_ceil(4);
+  assert_eq!(res3, 2);
+
+  let res4 = log2_ceil(5);
+  assert_eq!(res4, 3);
+
+  let res5 = log2_ceil(127);
+  assert_eq!(res5, 7);
+}
+
 pub fn get_pseudorandom_indices(
   seed: &[u8],
   modulus: u32,
   count: usize,
   exclude_multiples_of: u32,
-) -> Vec<usize> {
+) -> Vec<u32> {
   assert!(modulus < 2u32.pow(24));
   let mut data = seed.to_vec();
   while data.len() < 4 * count {
@@ -49,7 +95,6 @@ pub fn get_pseudorandom_indices(
     return (0..(count * 4))
       .step_by(4)
       .map(|i| u32::from_be_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]) % modulus)
-      .map(|i| i.try_into().unwrap())
       .collect();
   }
 
@@ -58,7 +103,6 @@ pub fn get_pseudorandom_indices(
     .step_by(4)
     .map(|i| u32::from_be_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]) % real_modulus)
     .map(|i| i + 1 + i / (exclude_multiples_of - 1))
-    .map(|i| i.try_into().unwrap())
     .collect();
 }
 

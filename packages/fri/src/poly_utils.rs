@@ -71,7 +71,7 @@ pub fn multi_inv<T: PrimeField>(values: &[T]) -> Vec<T> {
 
 #[test]
 fn test_multi_inv() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   let values: Vec<F7> = [1u64, 3, 2, 6, 4, 5].iter().map(|x| F7::from(*x)).collect();
   let res = multi_inv(&values);
@@ -103,7 +103,7 @@ pub fn eval_poly_at<T: PrimeField>(polyn: &[T], x: T) -> T {
 
 #[test]
 fn test_eval_poly_at() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   // p(x) = 1 + 2x + x^3
   let p: Vec<F7> = [1u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
@@ -124,7 +124,7 @@ pub fn add_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
 
 #[test]
 fn test_add_polys() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   // p1(x) = 4 + 2x + x^3
   let p1: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
@@ -146,7 +146,7 @@ pub fn sub_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
 
 #[test]
 fn test_sub_polys() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   // p1(x) = 4 + 2x + x^3
   let p1: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
@@ -164,7 +164,7 @@ pub fn mul_by_const<T: PrimeField>(a: &[T], scalar: T) -> Vec<T> {
 
 #[test]
 fn test_mul_by_const() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   // p(x) = 4 + 2x + x^3
   let p: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
@@ -186,7 +186,7 @@ pub fn reduction_poly<T: PrimeField>(a: &[T], n: usize) -> Vec<T> {
 
 #[test]
 fn test_reduction_poly() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   let p: Vec<F7> = [4u64, 2, 0, 1, 3, 2].iter().map(|c| F7::from(*c)).collect();
   let q = reduction_poly(&p, 4);
@@ -213,7 +213,7 @@ pub fn mul_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
 
 #[test]
 fn test_mul_polys_low_degree() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   // p1(x) = 4 + 2x + x^3
   let p1: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
@@ -263,7 +263,7 @@ pub fn div_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
 
 #[test]
 fn test_div_polys_low_degree() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   // p1(x) = 3 + 2x + 3x^2 + 3x^3 + 1x^4 + 2x^5
   let p1: Vec<F7> = [3u64, 2, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
@@ -278,7 +278,7 @@ fn test_div_polys_low_degree() {
 #[test]
 #[should_panic(expected = "assertion failed: a.len() >= b.len()")]
 fn test_panic_div_polys_low_degree() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   // p1(x) = 3 + 2x + 3x^2 + 3x^3 + 1x^4 + 2x^5
   let p1: Vec<F7> = [3u64, 2, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
@@ -296,7 +296,7 @@ pub fn mod_polys<T: PrimeField>(a: &[T], b: &[T]) -> Vec<T> {
 
 #[test]
 fn test_mod_polys_low_degree() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   // p1(x) = 5 + 4x + 3x^2 + 3x^3 + 1x^4 + 2x^5
   let p1: Vec<F7> = [5u64, 4, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
@@ -337,7 +337,7 @@ pub fn sparse<T: PrimeField>(coeff_dict: HashMap<usize, T>) -> Vec<T> {
 
 #[test]
 fn test_sparse() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   let mut coeff: HashMap<usize, F7> = HashMap::new();
   coeff.insert(1usize, F7::from(3u64));
@@ -374,7 +374,7 @@ pub fn zpoly<T: PrimeField>(xs: &[T]) -> Vec<T> {
 
 #[test]
 fn test_zpoly() {
-  use crate::f7::F7;
+  use ff_utils::f7::F7;
 
   let xs: Vec<F7> = [0u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
   let ys = zpoly(&xs);

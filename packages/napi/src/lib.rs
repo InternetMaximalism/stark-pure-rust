@@ -5,18 +5,18 @@ use r1cs_stark::run::{
 
 fn prove_with_file_path(mut cx: FunctionContext) -> JsResult<JsUndefined> {
     let r1cs_file_path = cx.argument::<JsString>(0)?.value(&mut cx);
-    let witness_json_path = cx.argument::<JsString>(1)?.value(&mut cx);
+    let witness_file_path = cx.argument::<JsString>(1)?.value(&mut cx);
     let proof_json_path = cx.argument::<JsString>(2)?.value(&mut cx);
-    _prove_with_file_path(&r1cs_file_path, &witness_json_path, &proof_json_path).unwrap();
+    _prove_with_file_path(&r1cs_file_path, &witness_file_path, &proof_json_path).unwrap();
     Ok(cx.undefined())
 }
 
 // "../r1cs-stark/tests/mul_bn128.r1cs", "../r1cs-stark/tests/mul_bn128_wtns_valid.json", "../r1cs-stark/tests/mul_bn128_proof.json"
 fn verify_with_file_path(mut cx: FunctionContext) -> JsResult<JsBoolean> {
     let r1cs_file_path = cx.argument::<JsString>(0)?.value(&mut cx);
-    let witness_json_path = cx.argument::<JsString>(1)?.value(&mut cx);
+    let witness_file_path = cx.argument::<JsString>(1)?.value(&mut cx);
     let proof_json_path = cx.argument::<JsString>(2)?.value(&mut cx);
-    _verify_with_file_path(&r1cs_file_path, &witness_json_path, &proof_json_path).unwrap();
+    _verify_with_file_path(&r1cs_file_path, &witness_file_path, &proof_json_path).unwrap();
     Ok(cx.boolean(true))
 }
 

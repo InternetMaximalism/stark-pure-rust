@@ -6,7 +6,7 @@ use crate::merkle_tree::{
 use std::convert::TryInto;
 
 pub fn permute4_values(values: &[Vec<u8>]) -> Vec<Vec<u8>> {
-  let mut o = vec![];
+  let mut o: Vec<Vec<u8>> = vec![];
   let ld4 = values.len() / 4;
   for i in 0..ld4 {
     o.extend([

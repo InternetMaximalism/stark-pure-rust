@@ -5,7 +5,7 @@ edition = "2018"
 
 [dependencies]
 blake2 = "0.9.1"
-ff = { version = "0.10.0", features = ["default", "derive"] }
+ff = "0.10.0"
 group = "0.10"
 pairing_ce = "0.24.2"
 subtle = "2.4"
@@ -15,6 +15,11 @@ rand_core = "0.6"
 num = "0.4"
 hex = "0.4.3"
 serde = { version = "^1.0.101", features = ["derive"] }
+futures = {package = "futures", version = "0.3", default_features = false, features = ["executor", "thread-pool"]}
+num_cpus = "1"
+crossbeam = "0.7"
+ff_utils = { version = "0.1.0", path = "../ff_utils" }
+commitment = { version = "0.1.0", path = "../commitment" }
 
 [lib]
 name = "fri"
