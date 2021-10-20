@@ -1,442 +1,374 @@
-// use crate::utils::*;
-// use ff::PrimeField;
-// use fri::ff_utils::{FromBytes, ToBytes};
-// use fri::fft::{expand_root_of_unity, fft, inv_fft};
-// use fri::fri::prove_low_degree;
-// use fri::permuted_tree::{get_root, merklize, mk_multi_branch};
-// use fri::poly_utils::{eval_poly_at, lagrange_interp, multi_inv};
-// use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
-// use num::bigint::BigUint;
+use crate::utils::*;
+use ff::PrimeField;
+use ff_utils::ff_utils::{FromBytes, ToBytes};
+use fri::delayed::Delayed;
+use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
+use fri::fri::prove_low_degree;
+use fri::lazily;
+use fri::merkle_tree::{gen_multi_proofs_multi_core, BlakeDigest};
+use fri::multicore::Worker;
+use fri::poly_utils::{eval_poly_at, multi_inv};
+use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
+use num::bigint::BigUint;
 
-// pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
-//   computational_trace: &[T],
-//   public_input: &[T],
-//   n_coeff_list: &[usize],
-//   coefficients: &[T], // This argument may be good to use HashMap<usize, T> instead of Vec<T> because we can omit zero coefficients from it.
-//   n_constraints: usize,
-//   n_wires: usize,
-// ) -> StarkProof {
-//   let mut constants = coefficients.to_vec();
-//   constants.extend(coefficients.to_vec());
-//   let original_steps = constants.len();
-//   assert!(original_steps <= 6 * n_constraints * n_wires);
-//   assert_eq!(computational_trace.len(), original_steps);
+pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
+  witness_trace: &[T],
+  computational_trace: &[T],
+  public_wires: &[T],
+  public_first_indices: &[(usize, usize)],
+  permuted_indices: &[usize],
+  coefficients: &[T],
+  flag0: &[T],
+  flag1: &[T],
+  flag2: &[T],
+  n_constraints: usize,
+  n_wires: usize,
+) -> StarkProof {
+  // println!("n_cons: {:?}", n_constraints);
+  // println!("n_wires: {:?}", n_wires);
+  // println!("n_public_wires: {:?}", public_wires.len());
+  // println!("last_coeff_list: {:?}", last_coeff_list);
+  let original_steps = coefficients.len();
+  println!("original_steps: {:?}", original_steps);
+  assert!(original_steps <= 3 * n_constraints * n_wires);
+  assert!(original_steps % 3 == 0);
+  assert_eq!(witness_trace.len(), original_steps);
+  assert_eq!(computational_trace.len(), original_steps);
 
-//   let mut log_steps = 1;
-//   let mut tmp_steps = original_steps - 1;
-//   while tmp_steps > 1 {
-//     tmp_steps /= 2;
-//     log_steps += 1;
-//   }
-//   let steps = 2usize.pow(log_steps);
+  let log_steps = log2_ceil(original_steps - 1);
+  let mut steps = 2usize.pow(log_steps);
+  if steps < 8 {
+    steps = 8;
+  }
 
-//   assert!(steps <= 2usize.pow(32));
-//   let precision = steps * EXTENSION_FACTOR;
+  let precision = steps * EXTENSION_FACTOR;
+  println!("precision: {:?}", precision);
+  println!(
+    "original_steps * skips {:?}",
+    original_steps * EXTENSION_FACTOR
+  );
 
-//   let mut computational_trace = computational_trace.to_vec();
-//   computational_trace.extend(vec![T::zero(); steps - original_steps]);
+  let log_precision = log_steps + LOG_EXTENSION_FACTOR as u32;
+  let log_max_precision = calc_max_log_precision::<T>();
+  println!("max_precision: 2^{:?}", log_max_precision);
+  assert!(precision <= 2usize.pow(log_max_precision));
 
-//   let mut constants = constants.to_vec();
-//   constants.extend(vec![T::zero(); steps - original_steps]);
+  let mut permuted_indices = permuted_indices.to_vec();
+  permuted_indices.extend(original_steps..steps);
+  // println!("permuted_indices.len(): {:?}", permuted_indices.len());
 
-//   // Root of unity such that x^precision=1
-//   let times_nmr = BigUint::from_bytes_be(&(T::zero() - T::one()).to_bytes_be().unwrap());
-//   let times_dnm = BigUint::from_bytes_be(&precision.to_be_bytes());
-//   assert!(&times_nmr % &times_dnm == BigUint::from(0u8));
-//   let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) / precision
-//   let g2 = T::multiplicative_generator().pow_vartime(&times); // g2^precision == 1 mod modulus
+  let mut coefficients = coefficients.to_vec();
+  coefficients.extend(vec![T::zero(); steps - original_steps]);
 
-//   // Root of unity such that x^steps=1
-//   let skips = precision / steps; // EXTENSION_FACTOR
+  let mut witness_trace = witness_trace.to_vec();
+  witness_trace.extend(vec![T::zero(); steps - original_steps]);
+  // println!("witness_trace.len(): {:?}", witness_trace.len());
 
-//   // Powers of the higher-order root of unity
-//   let xs = expand_root_of_unity(g2);
-//   let g1 = xs[skips];
+  let mut computational_trace = computational_trace.to_vec();
+  computational_trace.extend(vec![T::zero(); steps - original_steps]);
+  // println!("computational_trace: {:?}", computational_trace);
 
-//   // Interpolate the computational trace into a polynomial P, with each step
-//   // along a successive power of g1
-//   let p_polynomial = inv_fft(&computational_trace, g1);
-//   let p_evaluations = fft(&p_polynomial, g2);
-//   println!("Converted computational steps into a polynomial and low-degree extended it");
+  let ff_order = T::zero() - T::one();
+  let times_nmr = BigUint::from_bytes_le(&ff_order.to_bytes_le().unwrap());
+  let times_dnm = BigUint::from_bytes_le(&precision.to_le_bytes());
+  assert!(&times_nmr % &times_dnm == BigUint::from(0u8));
+  {
+    let times = parse_bytes_to_u64_vec(&times_nmr.to_bytes_le()); // modulus - 1
+    let unity = T::multiplicative_generator().pow_vartime(&times);
+    debug_assert_eq!(unity, T::one()); // g0^(modulus - 1) = 1 mod modulus
+  }
 
-//   let k_polynomial = inv_fft(&constants, g1);
-//   let k_evaluations = fft(&k_polynomial, g2);
-//   println!("Converted constants into a polynomial and low-degree extended it");
+  let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) / precision
+  let g2 = T::multiplicative_generator().pow_vartime(&times); // g2^precision = 1 mod modulus
+  let xs = expand_root_of_unity(g2); // Powers of the higher-order root of unity
+  let skips = precision / steps; // EXTENSION_FACTOR
+  let g1 = xs[skips]; // root of unity x such that x^steps = 1
+  let log_order_of_g1 = log_steps as u32;
+  let log_order_of_g2 = log_precision as u32;
 
-//   // Create the composed polynomial such that
-//   // Q(g1^j) = P(g1^(j-1)) + P(g1^(j % n_constraints))*K(g1^j) - P(g1^j)
-//   // let z1_num_evaluations: Vec<T> = (0..precision)
-//   //   .map(|i| xs[(i * steps) % precision] - T::one())
-//   //   .collect();
-//   // let z1_num_inv = multi_inv(&z1_num_evaluations);
-//   // let mut z1_dnm_evaluations: Vec<T> = vec![T::one(); precision];
-//   let mut z1_evaluations: Vec<T> = vec![T::one(); precision];
-//   let mut q1_evaluations = vec![];
-//   for j in 0..precision {
-//     let half = 3 * n_constraints * n_wires * skips;
-//     let p_of_x_plus_half = p_evaluations[(j + half) % precision]; // P(g1^next_k)
-//     let p_of_prev_x_plus_half = p_evaluations[(j + half - skips) % precision]; // P(g1^(next_k-1))
-//     let p_of_x = p_evaluations[j]; // P(g1^(next_k % n_wires))
-//     let k_of_x_plus_half = k_evaluations[(j + half) % precision]; // K(g1^next_k)
+  // Interpolate the computational trace into a polynomial P, with each step
+  // along a successive power of g1
+  println!("calculate expanding polynomials");
+  let worker = Worker::new();
 
-//     q1_evaluations.push(p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x);
-//     // if j == 393 {
-//     //   println!(
-//     //     "{:?} {:?}    {:?} {:?}    {:?}",
-//     //     p_of_x,
-//     //     p_of_prev_x_plus_half,
-//     //     p_of_x_plus_half,
-//     //     k_of_x_plus_half,
-//     //     p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x
-//     //   );
-//     // }
+  let k_polynomial = inv_best_fft(coefficients, &g1, &worker, log_order_of_g1); // K(X)
+  let k_evaluations = best_fft(k_polynomial, &g2, &worker, log_order_of_g2);
+  // println!("k: {:?}", k_evaluations);
+  println!("Converted coefficients into a polynomial and low-degree extended it");
 
-//     // if (p_of_x_plus_half - p_of_prev_x_plus_half - k_of_x_plus_half * p_of_x == T::zero()) {
-//     //   println!("valid {}", j);
-//     // }
+  let f0_polynomial = inv_best_fft(flag0.to_vec(), &g1, &worker, log_order_of_g1);
+  let f0_evaluations = best_fft(f0_polynomial.clone(), &g2, &worker, log_order_of_g2);
+  // println!("f0_evaluations: {:?}", f0_evaluations);
 
-//     // if (j >= original_steps * skips / 2 || j % (n_wires * skips) == 0 || j % skips != 0)
-//     //   && (j % skips == 0)
-//     // {
-//     //   z1_dnm_evaluations = z1_dnm_evaluations
-//     //     .iter()
-//     //     .enumerate()
-//     //     .map(|(i, &val)| val * (xs[i] - xs[j]))
-//     //     .collect();
-//     // }
+  let f1_polynomial = inv_best_fft(flag1.to_vec(), &g1, &worker, log_order_of_g1);
+  let f1_evaluations = best_fft(f1_polynomial, &g2, &worker, log_order_of_g2);
+  // println!("f1_evaluations: {:?}", f1_evaluations);
 
-//     if j < original_steps * skips / 2 && j % skips == 0 && j % (n_wires * skips) != 0 {
-//       z1_evaluations = z1_evaluations
-//         .iter()
-//         .enumerate()
-//         .map(|(i, &val)| val * (xs[i] - xs[j]))
-//         .collect();
-//     }
-//   }
+  let f2_polynomial = inv_best_fft(flag2.to_vec(), &g1, &worker, log_order_of_g1);
+  let f2_evaluations = best_fft(f2_polynomial, &g2, &worker, log_order_of_g2);
+  // println!("f2_evaluations: {:?}", f2_evaluations);
+  println!("Converted flags into a polynomial and low-degree extended it");
 
-//   // let mut z2_dnm_evaluations: Vec<T> = vec![T::one(); precision];
-//   let mut z2_evaluations: Vec<T> = vec![T::one(); precision];
-//   let mut q2_evaluations = vec![];
-//   for j in 0..precision {
-//     let j1 = j;
-//     let j2 = (j1 + n_coeff_list.len() * skips) % precision;
-//     let j3 = (j2 + n_coeff_list.len() * skips) % precision;
-//     let a_eval = p_evaluations[j1];
-//     let b_eval = p_evaluations[j2];
-//     let c_eval = p_evaluations[j3];
-//     q2_evaluations.push(c_eval - a_eval * b_eval);
+  let s_polynomial = inv_best_fft(witness_trace.clone(), &g1, &worker, log_order_of_g1); // S(X)
+  let s_evaluations = best_fft(s_polynomial, &g2, &worker, log_order_of_g2);
+  // println!("s_evaluations: {:?}", s_evaluations);
+  println!("Converted witness trace into a polynomial and low-degree extended it");
 
-//     // if j % skips == 0
-//     // // c_eval == a_eval * b_eval
-//     // {
-//     //   println!("{:03} {:?} {:?}    {:?}", j, a_eval, b_eval, c_eval);
-//     // }
+  let p_polynomial = inv_best_fft(computational_trace, &g1, &worker, log_order_of_g1); // P(X)
+  let p_evaluations = best_fft(p_polynomial, &g2, &worker, log_order_of_g2);
+  // println!("p_evaluations: {:?}", p_evaluations);
+  println!("Converted computational trace into a polynomial and low-degree extended it");
 
-//     // if j < original_steps * skips
-//     //   && j >= (2 * n_wires - 1) * skips
-//     //   && (j - (2 * n_wires - 1) * skips) % (3 * n_wires * skips) == 0
-//     // if (j >= original_steps * skips / 2
-//     //   || j < (n_wires - 1) * skips
-//     //   || (j - (n_wires - 1) * skips) % (3 * n_wires * skips) != 0)
-//     //   && j % skips == 0
-//     // {
-//     //   z2_dnm_evaluations = z2_dnm_evaluations
-//     //     .iter()
-//     //     .enumerate()
-//     //     .map(|(i, &val)| val * (xs[i] - xs[j]))
-//     //     .collect();
-//     // }
+  let z_polynomial = calc_z_polynomial(steps);
+  let z_evaluations = best_fft(z_polynomial, &g2, &worker, log_order_of_g2);
+  // println!("z_evaluations: {:?}", z_evaluations);
+  println!("Computed Z1 polynomial");
 
-//     if j < original_steps * skips
-//       && j >= original_steps * skips / 2
-//       && (original_steps * skips / 2 - j) % skips == 0
-//       && (n_coeff_list.contains(&(&(original_steps * skips / 2 - j) / skips)))
-//     {
-//       z2_evaluations = z2_evaluations
-//         .iter()
-//         .enumerate()
-//         .map(|(i, &val)| val * (xs[i] - xs[j]))
-//         .collect();
-//     }
-//   }
-//   println!("Computed Q polynomial");
+  let q1_evaluations = calc_q1_evaluations(
+    &s_evaluations,
+    &k_evaluations,
+    &p_evaluations,
+    &f0_evaluations,
+    &f1_evaluations,
+    precision,
+    skips,
+  );
+  // println!("q1_evaluations: {:?}", q1_evaluations);
+  println!("Computed Q1 polynomial");
 
-//   // Compute D(x) = Q(x) / Z(x)
-//   // let z_nmr_evaluations: Vec<T> = (0..precision)
-//   //   .map(|i| xs[(i * steps) % precision] - T::one())
-//   //   .collect();
-//   // let z_nmr_evaluations: Vec<T> = (0..precision)
-//   //   .map(|i| xs[(i * steps) % precision] - T::one())
-//   //   .collect();
-//   // let inv_z_nmr_evaluations: Vec<T> = multi_inv(&z_nmr_evaluations);
-//   let inv_z1_evaluations: Vec<T> = multi_inv(&z1_evaluations);
-//   let inv_z2_evaluations: Vec<T> = multi_inv(&z2_evaluations);
-//   // let inv_z1_evaluations: Vec<T> = z1_dnm_evaluations
-//   //   .iter()
-//   //   .zip(&inv_z_nmr_evaluations)
-//   //   .map(|(&z1d, &zni)| z1d * zni)
-//   //   .collect();
-//   // let z1_evaluations: Vec<T> = inv_z1_dnm_evaluations
-//   //   .iter()
-//   //   .zip(&z_nmr_evaluations)
-//   //   .map(|(&z1d, &zni)| z1d * zni)
-//   //   .collect();
-//   // for (i, (&q1, &z1)) in q1_evaluations.iter().zip(&z1_evaluations).enumerate() {
-//   //   if z1 == T::zero() {
-//   //     if q1 != T::zero() {
-//   //       assert_eq!(i, 0);
-//   //     } else {
-//   //       println!("valid {:?}", i);
-//   //     }
-//   //   }
-//   // }
-//   // let z1_polynomial = inv_fft(&z1_evaluations, g2);
-//   // let q1_polynomial = reduction_poly(&inv_fft(&q1_evaluations, g2), precision);
-//   // let d1_polynomial = div_polys(&q1_polynomial, &z1_polynomial);
-//   // let q1_polynomial_copy = reduction_poly(&mul_polys(&z1_polynomial, &d1_polynomial), precision);
-//   // assert_eq!(q1_polynomial, q1_polynomial_copy);
-//   // println!("{:?}", d1_polynomial);
+  let q2_evaluations = calc_q2_evaluations(
+    &p_evaluations,
+    &f2_evaluations,
+    precision,
+    skips,
+    original_steps,
+  );
+  // println!("f0_evaluations: {:?}", f0_evaluations);
+  // println!("f2_evaluations: {:?}", f2_evaluations);
+  // println!("q2_evaluations: {:?}", q2_evaluations);
+  println!("Computed Q2 polynomial");
 
-//   // let d1_evaluations = fft(&d1_polynomial, g2);
-//   // println!("{:?}", d1_evaluations);
-//   let d1_evaluations: Vec<T> = q1_evaluations
-//     .iter()
-//     .zip(&inv_z1_evaluations)
-//     .map(|(&q1, &z1i)| q1 * z1i)
-//     .collect();
-//   // println!("P1: {:?}", p_evaluations[(393 + 240 - 8) % 512]);
-//   // println!("P1: {:?}", p_evaluations[(393 + 240) % 512]);
-//   // println!("P1: {:?}", p_evaluations[393]);
-//   // println!("K1: {:?}", k_evaluations[(393 + 240) % 512]);
-//   // println!("Q1: {:?}", q1_evaluations[393]);
-//   // println!("D1: {:?}", d1_evaluations[393]);
-//   // println!("Z1_dnm: {:?}", z1_dnm_evaluations[393]);
-//   // println!("Z1_nmr^-1: {:?}", inv_z_nmr_evaluations[393]);
-//   // println!(
-//   //   "Z1^-1: {:?}",
-//   //   z1_dnm_evaluations[393] * inv_z_nmr_evaluations[393]
-//   // );
-//   // println!("Z1: {:?}", z1_evaluations[393]);
-//   // println!("D1*Z1: {:?}", d1_evaluations[393] * z1_evaluations[393]);
-//   // println!(
-//   //   "Q1/Z1: {:?}",
-//   //   q1_evaluations[393] * z1_evaluations[393].invert().unwrap()
-//   // );
+  // let converted_indices = (0..steps)
+  //   .map(|v| T::from_bytes_le(v.to_le_bytes().as_ref()).unwrap())
+  //   .collect::<Vec<_>>();
+  let converted_indices = convert_usize_iter_to_ff_vec(0..steps);
+  let index_polynomial = inv_best_fft(converted_indices, &g1, &worker, log_order_of_g1);
+  let ext_indices = best_fft(index_polynomial, &g2, &worker, log_order_of_g2);
+  println!("Computed extended index polynomial");
 
-//   let d2_evaluations: Vec<T> = q2_evaluations
-//     .iter()
-//     .zip(&inv_z2_evaluations)
-//     .map(|(&q2, &z2i)| q2 * z2i)
-//     .collect();
-//   println!("Computed D polynomial");
-//   // println!("deg Q2: {:?}", q2_evaluations[510]);
-//   // println!("deg D2: {:?}", d2_evaluations[510]);
-//   // println!("Z2_dnm: {:?}", z2_dnm_evaluations[510]);
-//   // println!("Z2_nmr^-1: {:?}", inv_z_nmr_evaluations[510]);
-//   // println!(
-//   //   "Z2^-1: {:?}",
-//   //   z2_dnm_evaluations[510] * inv_z_nmr_evaluations[510]
-//   // );
-//   // println!(
-//   //   "Z2: {:?}",
-//   //   (z2_dnm_evaluations[510] * inv_z_nmr_evaluations[510])
-//   //     .invert()
-//   //     .unwrap()
-//   // );
+  let converted_permuted_indices = convert_usize_iter_to_ff_vec(permuted_indices.clone());
+  let permuted_polynomial = inv_best_fft(converted_permuted_indices, &g1, &worker, log_order_of_g1);
+  let ext_permuted_indices = best_fft(permuted_polynomial, &g2, &worker, log_order_of_g2);
+  // println!("ext_permuted_indices: {:?}", ext_permuted_indices);
+  println!("Computed extended permuted index polynomial");
 
-//   // {
-//   //   let ys = &d1_evaluations;
-//   //   // let ys: Vec<T> = inv_z1_dnm_evaluations
-//   //   //   .iter()
-//   //   //   .map(|&z1| {
-//   //   //     if z1 == T::zero() {
-//   //   //       T::zero()
-//   //   //     } else {
-//   //   //       z1.invert().unwrap()
-//   //   //     }
-//   //   //   })
-//   //   //   .collect();
-//   //   // let ys: Vec<T> = inv_z1_dnm_evaluations
-//   //   //   .iter()
-//   //   //   .zip(&z_nmr_evaluations)
-//   //   //   .map(|(&z1di, &z1n)| (z1di * z1n))
-//   //   //   .collect();
-//   //   // let ys = multi_inv(&inv_z1_dnm_evaluations);
-//   //   // let ys: Vec<T> = ys
-//   //   //   .iter()
-//   //   //   .zip(&q1_evaluations)
-//   //   //   .map(|(&z1i, &q1)| (z1i * q1))
-//   //   //   .collect();
-//   //   let mut pts: Vec<usize> = (0..ys.len())
-//   //     .filter(|&x| x % (skips as usize) != 0)
-//   //     .collect();
-//   //   for &pos in pts.iter().peekable() {
-//   //     assert_eq!(
-//   //       q1_evaluations[pos],
-//   //       d1_evaluations[pos] * z1_evaluations[pos]
-//   //     );
-//   //   }
-//   //   let rest = pts.split_off(7 * ys.len() / 8 - 1); // 3 * precision / 4 + 1); // pts[max_deg_plus_1..]
-//   //   let x_vals: Vec<T> = pts.iter().map(|&pos| xs[pos]).collect();
-//   //   let y_vals: Vec<T> = pts.iter().map(|&pos| ys[pos]).collect();
-//   //   let poly = lagrange_interp(&x_vals, &y_vals);
+  let a_root: BlakeDigest = get_accumulator_tree_root(&permuted_indices, &witness_trace, &worker);
+  let r: Vec<T> = get_random_ff_values(a_root.as_ref(), precision as u32, 3, 0);
+  // println!("r: {:?}", r);
 
-//   //   // println!("{:?}", poly);
-//   //   // println!("{:?}", poly.len());
-//   //   for (_, &pos) in rest.iter().enumerate() {
-//   //     assert_eq!(eval_poly_at(&poly, xs[pos]), ys[pos]);
-//   //   }
-//   // }
+  let a_mini_evaluations = calc_a_mini_evaluations(
+    &witness_trace,
+    &ext_indices,
+    &ext_permuted_indices,
+    &r,
+    steps,
+    skips,
+  );
+  let a_polynomials = inv_best_fft(a_mini_evaluations, &g1, &worker, log_order_of_g1);
+  let a_evaluations = best_fft(a_polynomials, &g2, &worker, log_order_of_g2);
+  println!("Computed A polynomial");
 
-//   let interpolant = {
-//     let mut x_vals = vec![];
-//     let mut y_vals = vec![];
-//     for w in 0..n_wires {
-//       x_vals.push(xs[w * skips]);
-//       y_vals.push(public_input[w]);
-//     }
+  // let z3_polynomial = calc_z_polynomial(steps);
+  // let z3_evaluations = best_fft(z3_polynomial, &g2, &worker, log_order_of_g2);
+  // println!("z3_evaluations: {:?}", z3_evaluations);
+  // println!("Computed Z3 polynomial");
 
-//     for k in 0..n_constraints {
-//       x_vals.push(xs[n_coeff_list[k] * skips]);
-//       y_vals.push(public_input[n_coeff_list[k]]);
-//     }
+  let q3_evaluations = calc_q3_evaluations(
+    &s_evaluations,
+    &a_evaluations,
+    &ext_indices,
+    &ext_permuted_indices,
+    &r,
+    precision,
+    skips,
+  );
+  println!("Computed Q3 polynomial");
 
-//     lagrange_interp(&x_vals, &y_vals)
-//   };
-//   let i_evaluations: Vec<T> = xs.iter().map(|&x| eval_poly_at(&interpolant, x)).collect();
-//   // OR
-//   // i_evaluations = fft(interpolant, modulus, g2)
+  let inv_z_evaluations = multi_inv(&z_evaluations);
+  // let inv_z2_evaluations = multi_inv(&z2_evaluations);
+  // let inv_z3_evaluations = multi_inv(&z3_evaluations);
 
-//   let mut zb_evaluations = vec![T::one(); precision];
-//   for w in 0..n_wires {
-//     let j = w * skips;
-//     zb_evaluations = zb_evaluations
-//       .iter()
-//       .enumerate()
-//       .map(|(i, &val)| val * (xs[i] - xs[j]))
-//       .collect();
-//   }
-//   for k in 0..n_constraints {
-//     let j = n_coeff_list[k] * skips;
-//     zb_evaluations = zb_evaluations
-//       .iter()
-//       .enumerate()
-//       .map(|(i, &val)| val * (xs[i] - xs[j]))
-//       .collect();
-//   }
-//   let inv_zb_evaluations: Vec<T> = multi_inv(&zb_evaluations);
+  let d1_evaluations = calc_d1_polynomial(&q1_evaluations, &inv_z_evaluations);
+  println!("Computed D1 polynomial");
 
-//   // B(x) = (P(x) - I(x)) / Z_b(x)
-//   let b_evaluations: Vec<T> = p_evaluations
-//     .iter()
-//     .zip(&i_evaluations)
-//     .zip(&inv_zb_evaluations)
-//     .map(|((&p, &i), &inv_zb)| (p - i) * inv_zb)
-//     .collect();
-//   println!("Computed B polynomial");
+  let d2_evaluations = calc_d2_polynomial(&q2_evaluations, &inv_z_evaluations);
+  println!("Computed D2 polynomial");
 
-//   // Compute their Merkle root
-//   let poly_evaluations_str: Vec<Vec<u8>> = p_evaluations
-//     .iter()
-//     .zip(&d1_evaluations)
-//     .zip(&d2_evaluations)
-//     .zip(&b_evaluations)
-//     .map(|(((&p_val, &d1_val), &d2_val), &b_val)| {
-//       let mut res = vec![];
-//       res.extend(p_val.to_bytes_be().unwrap());
-//       res.extend(d1_val.to_bytes_be().unwrap());
-//       res.extend(d2_val.to_bytes_be().unwrap());
-//       res.extend(b_val.to_bytes_be().unwrap());
-//       res
-//     })
-//     .collect();
-//   println!("Compute Merkle tree");
+  let d3_evaluations: Vec<T> = calc_d3_polynomial(&q3_evaluations, &inv_z_evaluations);
+  println!("Computed D3 polynomial");
 
-//   let m_tree = merklize(&poly_evaluations_str);
-//   let m_root = get_root(&m_tree);
-//   println!("Computed hash root");
+  let interpolant2 = calc_i2_polynomial(public_first_indices, &xs, &public_wires, skips);
+  let i2_evaluations: Vec<T> = xs.iter().map(|&x| eval_poly_at(&interpolant2, x)).collect();
 
-//   // Based on the hashes of P, D and B, we select a random linear combination
-//   // of P * x^steps, P, B * x^steps, B and D, and prove the low-degreeness of that,
-//   // instead of proving the low-degreeness of P, B and D separately
-//   let k0 = T::one();
-//   let k1 = T::from_str(&mk_seed(&[m_root.clone(), b"\x01".to_vec()])).unwrap();
-//   let k2 = T::from_str(&mk_seed(&[m_root.clone(), b"\x02".to_vec()])).unwrap();
-//   let k3 = T::from_str(&mk_seed(&[m_root.clone(), b"\x03".to_vec()])).unwrap();
-//   let k4 = T::from_str(&mk_seed(&[m_root.clone(), b"\x04".to_vec()])).unwrap();
-//   let k5 = T::from_str(&mk_seed(&[m_root.clone(), b"\x05".to_vec()])).unwrap();
+  let interpolant3 = calc_i3_polynomial(&xs, skips);
+  let i3_evaluations: Vec<T> = xs.iter().map(|&x| eval_poly_at(&interpolant3, x)).collect();
+  println!("Computed I polynomial");
 
-//   // Compute the linear combination. We don't even both calculating it in
-//   // coefficient form; we just compute the evaluations
-//   // let g2_to_the_steps = xs[steps];
-//   let g2_to_the_steps = g2.pow_vartime(&parse_bytes_to_u64_vec(&steps.to_le_bytes()));
-//   let mut powers = vec![T::one()];
-//   for _ in 1..precision {
-//     powers.push(g2_to_the_steps * powers.last().unwrap());
-//   }
+  let zb2_evaluations = calc_zb2_evaluations(&public_first_indices, &xs, precision, skips);
+  let zb3_evaluations = calc_zb3_evaluations(&xs, precision, skips);
+  println!("Computed Zb polynomial");
 
-//   let mut l_evaluations: Vec<T> = vec![];
-//   for ((((&p_of_x, &d1_of_x), &d2_of_x), &b_of_x), &x_to_the_steps) in p_evaluations
-//     .iter()
-//     .zip(&d1_evaluations)
-//     .zip(&d2_evaluations)
-//     .zip(&b_evaluations)
-//     .zip(&powers)
-//     .take(precision)
-//   {
-//     l_evaluations.push(
-//       k0 * d1_of_x
-//         + k1 * d2_of_x
-//         + k2 * p_of_x
-//         + k3 * p_of_x * x_to_the_steps
-//         + k4 * b_of_x
-//         + k5 * b_of_x * x_to_the_steps,
-//     );
-//   }
+  let inv_zb2_evaluations: Vec<T> = multi_inv(&zb2_evaluations);
+  let b2_evaluations = calc_b2_evaluations(&s_evaluations, &i2_evaluations, &inv_zb2_evaluations);
 
-//   let l_evaluations_str: Vec<Vec<u8>> = l_evaluations
-//     .iter()
-//     .map(|x| x.to_bytes_be().unwrap())
-//     .collect();
-//   let l_m_tree = merklize(&l_evaluations_str);
-//   println!("Computed random linear combination");
+  let inv_zb3_evaluations: Vec<T> = multi_inv(&zb3_evaluations);
+  let b3_evaluations = calc_b3_evaluations(&a_evaluations, &i3_evaluations, &inv_zb3_evaluations);
+  println!("Computed B polynomial");
 
-//   // Do some spot checks of the Merkle tree at pseudo-random coordinates, excluding
-//   // multiples of `skips`
-//   let positions = get_pseudorandom_indices(
-//     &get_root(&l_m_tree),
-//     precision as u32,
-//     SPOT_CHECK_SECURITY_FACTOR,
-//     skips as u32,
-//   );
-//   let mut augmented_positions = vec![];
-//   for &j in positions.iter().peekable() {
-//     let half = 3 * n_constraints * n_wires * skips;
-//     augmented_positions.extend([
-//       j,
-//       (j + half - skips) % precision,
-//       (j + half) % precision,
-//       (j + n_wires * public_input.len() * skips) % precision,
-//       (j + 2 * n_wires * public_input.len() * skips) % precision,
-//     ]);
-//   }
-//   // let branches: Vec<T> = vec![];
-//   // for pos in positions:
-//   //     branches.append(mk_branch(m_tree, pos))
-//   //     branches.append(mk_branch(m_tree, (pos + skips) % precision))
-//   //     branches.append(mk_branch(l_m_tree, pos))
-//   println!("Computed {} spot checks", SPOT_CHECK_SECURITY_FACTOR);
+  // Compute their Merkle root
+  let poly_evaluations_str = p_evaluations
+    .iter()
+    .zip(&a_evaluations)
+    .zip(&s_evaluations)
+    .zip(&d1_evaluations)
+    .zip(&d2_evaluations)
+    .zip(&d3_evaluations)
+    .zip(&b2_evaluations)
+    .zip(&b3_evaluations)
+    .map(
+      |(((((((&p_val, &a_val), &s_val), &d1_val), &d2_val), &d3_val), &b_val), &b3_val)| {
+        lazily!(
+          let mut res = vec![];
+          res.extend(p_val.to_bytes_le().unwrap());
+          res.extend(a_val.to_bytes_le().unwrap());
+          res.extend(s_val.to_bytes_le().unwrap());
+          res.extend(d1_val.to_bytes_le().unwrap());
+          res.extend(d2_val.to_bytes_le().unwrap());
+          res.extend(d3_val.to_bytes_le().unwrap());
+          res.extend(b_val.to_bytes_le().unwrap());
+          res.extend(b3_val.to_bytes_le().unwrap());
+          res
+        )
+      },
+    )
+    .collect::<Vec<_>>();
+  println!("Compute Merkle tree for the plain evaluations");
 
-//   // Return the Merkle roots of P and D, the spot check Merkle proofs,
-//   // and low-degree proofs of P and D
-//   let fri_proof = prove_low_degree::<T>(&l_evaluations, g2, precision / 4, skips as u32);
+  let (_, m_root) =
+    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&poly_evaluations_str, &[], &worker);
+  println!("Computed Merkle root for the plain evaluations");
 
-//   StarkProof {
-//     m_root: get_root(&m_tree).clone(),
-//     l_root: get_root(&l_m_tree).clone(),
-//     main_branches: mk_multi_branch(&m_tree, &augmented_positions),
-//     linear_comb_branches: mk_multi_branch(&l_m_tree, &positions),
-//     fri_proof: fri_proof,
-//   }
-//   // println!("STARK computed in %.4f sec" % (time.time() - start_time))
-// }
+  // Based on the hashes of P, D and B, we select a random linear combination
+  // of P * x^steps, P, B * x^steps, B and D, and prove that it is low-degree polynomial,
+  // instead of proving that P, B and D are low degree polynomials separately.
+  // let k0 = T::one();
+  // let k1 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x01".to_vec()])).unwrap();
+  // ...
+  // let k10 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x0a".to_vec()])).unwrap();
+  let mut k = vec![T::one()];
+  for i in 1u8..11 {
+    k.push(
+      T::from_str(&mk_seed(&[
+        m_root.as_ref().to_vec(),
+        i.to_be_bytes().to_vec(),
+      ]))
+      .unwrap(),
+    );
+  }
+
+  // Compute the linear combination. We don't even both calculating it in
+  // coefficient form; we just compute the evaluations
+  let g2_to_the_steps = xs[steps];
+  let mut powers = vec![T::one()];
+  for _ in 1..precision {
+    powers.push(g2_to_the_steps * powers.last().unwrap());
+  }
+
+  let mut l_evaluations: Vec<T> = vec![];
+  for (
+    (((((((&p_of_x, &a_of_x), &s_of_x), &d1_of_x), &d2_of_x), &d3_of_x), &b_of_x), &b3_of_x),
+    &x_to_the_steps,
+  ) in p_evaluations
+    .iter()
+    .zip(&a_evaluations)
+    .zip(&s_evaluations)
+    .zip(&d1_evaluations)
+    .zip(&d2_evaluations)
+    .zip(&d3_evaluations)
+    .zip(&b2_evaluations)
+    .zip(&b3_evaluations)
+    .zip(&powers)
+    .take(precision)
+  {
+    l_evaluations.push(
+      k[0] * d1_of_x
+        + k[1] * d2_of_x
+        + k[2] * d3_of_x
+        + k[3] * p_of_x
+        + k[4] * p_of_x * x_to_the_steps
+        + k[5] * b_of_x
+        + k[6] * b_of_x * x_to_the_steps
+        + k[7] * b3_of_x
+        + k[8] * b3_of_x * x_to_the_steps
+        + k[9] * a_of_x
+        + k[10] * s_of_x,
+    );
+  }
+
+  let l_evaluations_str = l_evaluations
+    .iter()
+    .map(|x| lazily!(x.to_bytes_le().unwrap()))
+    .collect::<Vec<_>>();
+
+  let (_, l_root) =
+    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&l_evaluations_str, &[], &worker);
+  println!("Computed Merkle root for the linear combination of evaluations");
+
+  // Do some spot checks of the Merkle tree at pseudo-random coordinates,
+  // excluding multiples of `skips`
+  let positions = get_pseudorandom_indices(
+    l_root.as_ref(),
+    precision as u32,
+    SPOT_CHECK_SECURITY_FACTOR,
+    skips as u32,
+  )
+  .iter()
+  .map(|&i| i as usize)
+  .collect::<Vec<usize>>();
+  // println!("{:?}", positions);
+
+  let (linear_comb_branches, _) =
+    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&l_evaluations_str, &positions, &worker);
+  println!("Computed Merkle branch for the linear combination of evaluations");
+
+  let mut augmented_positions = vec![];
+  for &j in positions.iter().peekable() {
+    augmented_positions.extend([
+      j,
+      (j + precision - skips) % precision,
+      (j + original_steps / 3 * skips) % precision,
+      (j + original_steps / 3 * 2 * skips) % precision,
+    ]);
+  }
+
+  let (main_branches, _) = gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(
+    &poly_evaluations_str,
+    &augmented_positions,
+    &worker,
+  );
+  println!("Computed Merkle branch for the plain evaluations");
+
+  // Return the Merkle roots of P and D, the spot check Merkle proofs,
+  // and low-degree proofs of P and D
+  let fri_proof = prove_low_degree::<T>(&l_evaluations, g2, precision / 4, skips as u32);
+  println!("Computed {} spot checks", SPOT_CHECK_SECURITY_FACTOR);
+
+  StarkProof {
+    m_root,
+    l_root,
+    a_root,
+    main_branches,
+    linear_comb_branches,
+    fri_proof,
+  }
+}

@@ -1,276 +1,489 @@
-use crate::utils::{blake, is_a_power_of_2};
-use std::convert::TryInto;
+use crate::delayed::Delayed;
+#[warn(unused_imports)]
+use crate::lazily;
+use crate::multicore::Worker;
+use crate::utils::{blake, is_a_power_of_2, log2_ceil};
+use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
+use std::fmt::Error;
+use std::ops::Deref;
 
-pub fn merklize(nodes: &[Vec<u8>]) -> Vec<Vec<u8>> {
-  let n = nodes.len();
-  assert!(is_a_power_of_2(n as usize));
+pub trait Element: AsRef<[u8]> + Clone + Default + Sync + Send + Eq + Debug {}
+pub trait Digest: AsRef<[u8]> + Clone + Default + Sync + Send + Eq + Debug {
+  fn hash(message: &[u8]) -> Self;
+}
 
-  let mut nodes_clone = nodes.to_vec();
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Proof<E: Element, H: Digest> {
+  pub leaf: E,
+  pub nodes: Vec<H>,
+}
 
-  for i in 0..(n - 1) {
-    let mut message = nodes_clone[2 * i].clone();
-    message.extend(&nodes_clone[2 * i + 1]);
-    let internal_hash = blake(&message);
-    nodes_clone.push(internal_hash);
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlakeDigest(Vec<u8>);
+
+impl Debug for BlakeDigest {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_fmt(format_args!("\"0x{}\"", hex::encode(&self.0)))
   }
-  nodes_clone
 }
 
-#[test]
-fn test_merklize() {
-  let leaves: Vec<Vec<u8>> = vec![
-    hex::decode("7fffffff").unwrap(),
-    hex::decode("80000000").unwrap(),
-    hex::decode("00000003").unwrap(),
-    hex::decode("00000000").unwrap(),
-  ];
-  let merkle_tree = merklize(&leaves);
-  assert_eq!(
-    merkle_tree
-      .iter()
-      .map(|node| hex::encode(node))
-      .collect::<Vec<String>>(),
-    [
-      "7fffffff",
-      "80000000",
-      "00000003",
-      "00000000",
-      "f086026887af5fd609b58ecc4fec9ad514dba2c6fed57078d1f40ba0b2ecc4ca",
-      "bfc3f121b61735fb3ac096a730b5f52909dc6f76c681f74fa2d59cf54cc4c74d",
-      "790c073cc04363a97b6db44efd32734264f1fa1e2fdf64a74cd9427bda4ab7da"
-    ]
-  );
-
-  let leaves: Vec<Vec<u8>> = vec![vec![0x00, 0x00, 0x00, 0x01]];
-  let merkle_tree = merklize(&leaves);
-  assert_eq!(merkle_tree, [[0x00, 0x00, 0x00, 0x01]]);
-}
-
-pub fn get_root(tree: &[Vec<u8>]) -> Vec<u8> {
-  tree[tree.len() - 1].clone()
-}
-
-pub fn mk_branch(tree: &[Vec<u8>], index: usize) -> Vec<Vec<u8>> {
-  let mut tree_clone = tree.to_vec();
-  tree_clone.push(vec![0, 0, 0, 0]);
-  tree_clone.reverse();
-  let mut index_clone = (tree.len() + 1) - 1 - index.clone();
-  let mut proof = vec![tree_clone[index_clone].clone()];
-  while index_clone > 1 {
-    proof.push(tree_clone[index_clone ^ 1].clone());
-    index_clone /= 2;
+impl AsRef<[u8]> for BlakeDigest {
+  fn as_ref(&self) -> &[u8] {
+    &(self.0)
   }
-  proof
 }
 
-pub fn verify_branch(root: &[u8], index: usize, proof: &[Vec<u8>]) -> Vec<u8> {
-  let proof_size: usize = 2u32
-    .pow(proof.len().try_into().unwrap())
-    .try_into()
-    .unwrap();
-  let mut index_clone: usize = index.clone() + proof_size;
-  let mut v = proof[0].clone();
-  for i in 1..(proof.len()) {
-    let mut message: Vec<u8> = vec![];
-    if index_clone % 2 == 1 {
-      message.extend(&proof[i]);
-      message.extend(&v);
-    } else {
-      message.extend(&v);
-      message.extend(&proof[i]);
+impl Default for BlakeDigest {
+  fn default() -> Self {
+    BlakeDigest(vec![])
+  }
+}
+
+impl Digest for BlakeDigest {
+  fn hash(message: &[u8]) -> Self {
+    BlakeDigest(blake(message))
+  }
+}
+
+impl Element for [u8; 32] {}
+
+impl Element for Vec<u8> {}
+
+impl<E: Element, H: Digest> Proof<E, H> {
+  pub fn height(&self) -> usize {
+    self.nodes.len()
+  }
+
+  pub fn validate(&self, root: &H, index: usize) -> Result<E, Error> {
+    // let num_of_leaves = 2usize.pow(self.height() as u32);
+    // let index = permute4_index(index, num_of_leaves);
+    let mut tmp = index;
+
+    let mut current_node = H::hash(self.leaf.as_ref());
+    for node in self.nodes.iter() {
+      let mut message: Vec<u8> = vec![];
+      if tmp % 2 == 0 {
+        message.extend(current_node.as_ref());
+        message.extend(node.as_ref());
+      } else {
+        message.extend(node.as_ref());
+        message.extend(current_node.as_ref());
+      }
+      current_node = H::hash(&message);
+      tmp /= 2;
     }
-    v = blake(&message);
-    index_clone /= 2;
+    assert_eq!(current_node, root.clone());
+    Ok(self.leaf.clone())
   }
-
-  assert_eq!(hex::encode(&v), hex::encode(root));
-  proof[0].clone()
 }
 
-#[test]
-fn test_single_proof() {
-  let index = 2;
-  let leaves: Vec<Vec<u8>> = vec![
-    hex::decode("7fffffff").unwrap(),
-    hex::decode("80000000").unwrap(),
-    hex::decode("00000003").unwrap(),
-    hex::decode("00000000").unwrap(),
+pub fn gen_multi_proofs_in_place<E: Element, H: Digest>(
+  current_nodes: &mut [H],
+  indices: &[usize],
+  steps: usize,
+) -> Vec<Proof<E, H>> {
+  // let leaves: Vec<E> = permute4_values(&leaves);
+  // let indices = permute4_indices(indices, leaves.len());
+  // println!("leaves: {:?}", leaves);
+  // println!("indices: {:?}", indices);
+  assert!(is_a_power_of_2(current_nodes.len()));
+
+  let mut proofs = vec![
+    Proof {
+      leaf: E::default(),
+      nodes: vec![]
+    };
+    indices.len()
   ];
-  let merkle_tree = merklize(&leaves);
-  let merkle_root = get_root(&merkle_tree);
-  let proof = mk_branch(&merkle_tree, index);
-  assert_eq!(
-    proof
-      .iter()
-      .map(|node| hex::encode(node))
-      .collect::<Vec<String>>(),
-    [
-      "00000003",
-      "00000000",
-      "f086026887af5fd609b58ecc4fec9ad514dba2c6fed57078d1f40ba0b2ecc4ca",
-    ]
-  );
 
-  let res = verify_branch(&merkle_root, index, &proof);
-  assert_eq!(res, leaves[index]);
-}
+  let mut log_nodes_interval = log2_ceil(steps);
+  assert_eq!(1 << log_nodes_interval, steps);
+  let current_nodes_len = current_nodes.len();
+  while (1 << log_nodes_interval) < current_nodes_len {
+    for (i, &tmp_index) in indices.iter().enumerate() {
+      let twin_index = ((tmp_index >> log_nodes_interval) ^ 1) << log_nodes_interval;
+      proofs[i].nodes.push(current_nodes[twin_index].clone());
+    }
 
-#[test]
-fn test2_single_proof() {
-  let index = 11;
-  let leaves: Vec<Vec<u8>> = [
-    "000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    "d5ff76a5acca4c8b2d9e84160f4b6fe9daa9d13a02bef4bbd8c5f40bba50e80becd013bd87d205920b870145de52f9e507c9cbd88c281418c1d980ce4c32281e0000000000000000000000000000000000000000000000000000000000000000",
-    "000000000000000000000000000000000000000000000000000000000000004500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    "2a00895a5335b374d2617be9f0b4901625562ec5fd410b44273a0a9545af183e132fec42782dfa6df478feba21ad061af836342773d7ebe73e267dd2b3ce2bad0000000000000000000000000000000000000000000000000000000000000000",
-    "15f2d49286cdda4d91a46319711f5d768cc6f897b55ce32e86e57631e697cddda26ff34c670c0408d8af01353ce182e87b090d467e895f2d1a8bcebd8b74718a0000000000000000000000000000000000000000000000000000000000000000",
-    "e89b30f4cae5f3d8c18ddedc75393d27a3975eb75789db46563008485451481c649f7ff67e4e087d7e34b324bdbd5475250d0bfb3c49f4a8544f25de0001a7a10000000000000000000000000000000000000000000000000000000000000000",
-    "ea0d2b6d793225b26e5b9ce68ee0a289733907684aa31cd1791a886f1968326c3d15aa11d6b0ec2ab81ad343e86850a26bbe47d9ac789988c1ae2084d0309c0c0000000000000000000000000000000000000000000000000000000000000000",
-    "1764cf0b351a0c273e7221238ac6c2d85c68a148a87624b9a9cff658abaeb82dbbdae2ab43f5074ef10178621cf8d7fff42b9ee498b412a1cf76e821a45c23e30000000000000000000000000000000000000000000000000000000000000000",
-    "9b84e0131d976bca60e739610817d397357de90a723a6a7e63745572a62879f539eaa20b0e5f8189cc27db422e739516fbe90038ac7480d663a62297d727ede90000000000000000000000000000000000000000000000000000000000000000",
-    "adc7c36fba3f0bb95e1519861681bcaa76d24927b5933a2e6681ecec1155218a6e062ff1a815f52da54da532a83215d5ef6c4aae24b291ae2c3e935124350ef10000000000000000000000000000000000000000000000000000000000000000",
-    "647b1fece26894359f18c69ef7e82c68ca8216f58dc595819c8ba92e59d786541ea5f06ce081465c1538610fb1be4752ab50f03bf6ed58ff5829d0de04848a720000000000000000000000000000000000000000000000000000000000000000",
-    "52383c9045c0f446a1eae679e97e4355892db6d84a6cc5d1997e11b4eeaadebf39693d96690942ec79521e7b779c0dc06959c4dd37eb947c17f177da002151cd0000000000000000000000000000000000000000000000000000000000000000",
-    "c8d4e5d94ca9cd458dd0247593d385847f155f5dc3dbf62eef19a51db12f90956383cd90e772afe8d38ee956701846d52f17cd99284a985f8e44ede84bb713290000000000000000000000000000000000000000000000000000000000000000",
-    "9b49d10b6ea5c401c484f0fd8361eed3dae42c1d7db1d21616234a917f717b6d916e67ce02cedca02907765af1b38b58b07fb3099d749aea15eec420d946ab2f0000000000000000000000000000000000000000000000000000000000000000",
-    "372b1a26b35632ba722fdb8a6c2c7a7b80eaa0a23c2409d110e659834ed06fb41eef75e08c2b9104bcedefde142096e3e7d5ce90092068dc545175d33e04395e0000000000000000000000000000000000000000000000000000000000000000",
-    "64b62ef4915a3bfe3b7b0f027c9e112c251bd3e2824e2de9e9dcb40f808e84dcec1e54c08992e272467bb0708a1396ee3892b0cd312063da077ad5659d00e1640000000000000000000000000000000000000000000000000000000000000000",
-  ]
-    .iter()
-    .map(|node| hex::decode(node).unwrap())
-    .collect();
+    let nodes_interval = 1 << log_nodes_interval;
+    let chunks_num = nodes_interval << 1;
+    for node in current_nodes.chunks_mut(chunks_num) {
+      let mut message: Vec<u8> = vec![];
+      message.extend(node[0].as_ref());
+      message.extend(node[nodes_interval].as_ref());
+      let hash = H::hash(&message);
+      // println!("node: {:?}", node[0]);
+      // println!("node: {:?}", node[1]);
+      // println!("hash: {:?}", hash);
+      node[0] = hash;
+    }
 
-  let merkle_tree = merklize(&leaves);
-  let answer: Vec<_> = vec![
-    "000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    "d5ff76a5acca4c8b2d9e84160f4b6fe9daa9d13a02bef4bbd8c5f40bba50e80becd013bd87d205920b870145de52f9e507c9cbd88c281418c1d980ce4c32281e0000000000000000000000000000000000000000000000000000000000000000",
-    "000000000000000000000000000000000000000000000000000000000000004500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    "2a00895a5335b374d2617be9f0b4901625562ec5fd410b44273a0a9545af183e132fec42782dfa6df478feba21ad061af836342773d7ebe73e267dd2b3ce2bad0000000000000000000000000000000000000000000000000000000000000000",
-    "15f2d49286cdda4d91a46319711f5d768cc6f897b55ce32e86e57631e697cddda26ff34c670c0408d8af01353ce182e87b090d467e895f2d1a8bcebd8b74718a0000000000000000000000000000000000000000000000000000000000000000",
-    "e89b30f4cae5f3d8c18ddedc75393d27a3975eb75789db46563008485451481c649f7ff67e4e087d7e34b324bdbd5475250d0bfb3c49f4a8544f25de0001a7a10000000000000000000000000000000000000000000000000000000000000000",
-    "ea0d2b6d793225b26e5b9ce68ee0a289733907684aa31cd1791a886f1968326c3d15aa11d6b0ec2ab81ad343e86850a26bbe47d9ac789988c1ae2084d0309c0c0000000000000000000000000000000000000000000000000000000000000000",
-    "1764cf0b351a0c273e7221238ac6c2d85c68a148a87624b9a9cff658abaeb82dbbdae2ab43f5074ef10178621cf8d7fff42b9ee498b412a1cf76e821a45c23e30000000000000000000000000000000000000000000000000000000000000000",
-    "9b84e0131d976bca60e739610817d397357de90a723a6a7e63745572a62879f539eaa20b0e5f8189cc27db422e739516fbe90038ac7480d663a62297d727ede90000000000000000000000000000000000000000000000000000000000000000",
-    "adc7c36fba3f0bb95e1519861681bcaa76d24927b5933a2e6681ecec1155218a6e062ff1a815f52da54da532a83215d5ef6c4aae24b291ae2c3e935124350ef10000000000000000000000000000000000000000000000000000000000000000",
-    "647b1fece26894359f18c69ef7e82c68ca8216f58dc595819c8ba92e59d786541ea5f06ce081465c1538610fb1be4752ab50f03bf6ed58ff5829d0de04848a720000000000000000000000000000000000000000000000000000000000000000", // branch
-    "52383c9045c0f446a1eae679e97e4355892db6d84a6cc5d1997e11b4eeaadebf39693d96690942ec79521e7b779c0dc06959c4dd37eb947c17f177da002151cd0000000000000000000000000000000000000000000000000000000000000000", // target
-    "c8d4e5d94ca9cd458dd0247593d385847f155f5dc3dbf62eef19a51db12f90956383cd90e772afe8d38ee956701846d52f17cd99284a985f8e44ede84bb713290000000000000000000000000000000000000000000000000000000000000000",
-    "9b49d10b6ea5c401c484f0fd8361eed3dae42c1d7db1d21616234a917f717b6d916e67ce02cedca02907765af1b38b58b07fb3099d749aea15eec420d946ab2f0000000000000000000000000000000000000000000000000000000000000000",
-    "372b1a26b35632ba722fdb8a6c2c7a7b80eaa0a23c2409d110e659834ed06fb41eef75e08c2b9104bcedefde142096e3e7d5ce90092068dc545175d33e04395e0000000000000000000000000000000000000000000000000000000000000000",
-    "64b62ef4915a3bfe3b7b0f027c9e112c251bd3e2824e2de9e9dcb40f808e84dcec1e54c08992e272467bb0708a1396ee3892b0cd312063da077ad5659d00e1640000000000000000000000000000000000000000000000000000000000000000",
-
-    "37b2efc67126ae8ab5598837195d9b9be56a44a5b3482c787dd30ee656867599",
-    "c9a70a02956089b9396118326d04b73cff97a25fee0319125efbb8afb5212c4c",
-    "0e1e269ef97801d162f18ca40f678154ec29b4131698b794ed1e942febca7892",
-    "ac7037673a5e18893b09e2caf29ecc07b582374d2edb0c50ede286a8d5cd942f",
-    "a65baca9ff73748f99c9945889d09d46fab29c558da4c46b38ce1421b0e7eb4d", // branch
-    "a6c29d6f29b399988d7a52624199e85b33c99c2420d8764c00fa6630109cbd3f", // target
-    "66a6d902a84689ba7aec8785d07c743490fe0d51a465d8554dfbb9dddc524b6d",
-    "602d3917fa4b2998f3c17c251431cd19578b6dc73bd48e18d59369ca4f925021",
-
-    "1e89e9fe074006fb1b0318cf54a77a155f57ba6db1a7fff0777ed854f180a7fa",
-    "37b475adccf3fe8d6156bdcc2fcae314bfc43a1b2a5866ffeff089b1a590992c",
-    "a2cd4f58befd63240d884353bb304ddb5bf8835099fbca92586a9d533c89692d", // target
-    "3c8c492d5322a20f2b96a8d36346688311ef0da25bb187dd4f69e8b7a371a300", // branch
-
-    "4eca2a96c40bdb860779a95198833fff633706d8fce2dc932c2f4e30b2920552", // branch
-    "8bd3c57137c85cea0e509ce4b09ede0fd5658ddd8743bb13997a754c795b06d6", // target
-
-    "6f8279bd0873c9fe0bb65712a105ec7b5fc9f5f952880777f4536847bd9b241c", // target
-  ];
-  assert_eq!(
-    merkle_tree
-      .iter()
-      .map(|node| hex::encode(node))
-      .collect::<Vec<String>>(),
-    answer
-  );
-  let merkle_root = get_root(&merkle_tree);
-  let proof = mk_branch(&merkle_tree, index);
-  assert_eq!(
-    proof
-      .iter()
-      .map(|node| hex::encode(node))
-      .collect::<Vec<String>>(),
-    ["52383c9045c0f446a1eae679e97e4355892db6d84a6cc5d1997e11b4eeaadebf39693d96690942ec79521e7b779c0dc06959c4dd37eb947c17f177da002151cd0000000000000000000000000000000000000000000000000000000000000000", "647b1fece26894359f18c69ef7e82c68ca8216f58dc595819c8ba92e59d786541ea5f06ce081465c1538610fb1be4752ab50f03bf6ed58ff5829d0de04848a720000000000000000000000000000000000000000000000000000000000000000", "a65baca9ff73748f99c9945889d09d46fab29c558da4c46b38ce1421b0e7eb4d", "3c8c492d5322a20f2b96a8d36346688311ef0da25bb187dd4f69e8b7a371a300", "4eca2a96c40bdb860779a95198833fff633706d8fce2dc932c2f4e30b2920552"]
-  );
-  let res = verify_branch(&merkle_root, index, &proof);
-  assert_eq!(hex::encode(res), "52383c9045c0f446a1eae679e97e4355892db6d84a6cc5d1997e11b4eeaadebf39693d96690942ec79521e7b779c0dc06959c4dd37eb947c17f177da002151cd0000000000000000000000000000000000000000000000000000000000000000");
-}
-
-// #[test]
-// fn test() {
-//   let merkle_root = "0000000000000000f4e76e3dee4ddce644ba422b784611631d1254d65f130361885d4b2bf6f680d1";
-//   let index = 4;
-//   let proof = ["0000000000000000f94e2453893f8ac8f313384cd2ed3242d1d48e5885216f55e24ba863205c36ea", "0000000000000000c79c149c44e9c595884ba0d0c94bad6c8ad72fbaf72201cf95c8966edde56718", "fc0b5ef601c3b8a6660f989620c62981f09185cd295d1e93ad2464201c610ece", "66dc98792db40ea9be7b0e66d1845267fad437ec56560cf1564be3bc6828f26a", "e0eccc939e6a9eace8f464333d7fc28142b03a4047113300e9d2abe24b3900b3", "6fc04d080943c6bcdd4f314f19360bd9ab3c9959271c673490a57f1b30bfccd1", "25ec911996051c047390df15b46ae06ebed2894f3cca1b3192a45d312f9e0123", "e7c98abdf781e1143e82ec56125ed67bdb77a841567116ab8596728a2d2dc860", "77e2496afed96b9bffc6b86be5cb59cfee7396c8361cf29507f23469cac11e04", "07fe7c01bd9c96f5c68b435c6ef54b937d0b54497796226b1296f351e60526a6", "4288090a0f6b103d195137fe1a6f0d7ffeab6cc272a23e3cc1fb379fd1ef9798", "8d970ac6d4d883e4c185d4d37d357841262b9e867fe5ea934b2748e266bdc07f", "90a01fe4b135a1caaad32b623a7af75ba11f9881bee503dde3b2ae64ce4b156b", "1a85fed038396acf7ff7476bf42bfe56caea6a9a9c4a37b8e26fd8f0623a72ba", "c60eb5ffb60ec5d92b6271d82a64f6f948abbcfc52608f9754469cb736e34da5"]
-//   let res = verify_branch(&merkle_root, index, &proof);
-// }
-
-pub fn mk_multi_branch(tree: &[Vec<u8>], indices: &[usize]) -> Vec<Vec<Vec<u8>>> {
-  let mut proofs = vec![];
-  for i in indices {
-    let proof = mk_branch(tree, *i);
-    proofs.push(proof);
+    log_nodes_interval += 1;
   }
 
   proofs
 }
 
-pub fn verify_multi_branch(
-  root: &[u8],
+pub fn gen_multi_proofs_multi_core<E: Element, H: Digest>(
+  leaves: &[Delayed<'_, E>],
   indices: &[usize],
-  proofs: &[Vec<Vec<u8>>],
-) -> Vec<Vec<u8>> {
-  indices
+  worker: &Worker,
+) -> (Vec<Proof<E, H>>, H) {
+  // let leaves: Vec<E> = permute4_values(&leaves);
+  // let indices = permute4_indices(indices, leaves.len());
+  // println!("leaves: {:?}", leaves);
+  // println!("indices: {:?}", indices);
+  assert!(is_a_power_of_2(leaves.len()));
+
+  let start = std::time::Instant::now();
+  let mut sorted_indices = indices.iter().enumerate().collect::<Vec<_>>().clone();
+  sorted_indices.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Sort leaves: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
+
+  let start = std::time::Instant::now();
+
+  let proof_leaves = sorted_indices
     .iter()
-    .zip(proofs)
-    .map(|(i, b)| verify_branch(root, *i, b))
-    .collect()
+    .map(|(_, &index)| leaves[index].deref().clone())
+    .collect::<Vec<_>>();
+
+  let mut current_nodes = leaves
+    .iter()
+    .map(|message| H::hash(message.as_ref()))
+    .collect::<Vec<_>>();
+
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Collect leaves: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
+
+  let start = std::time::Instant::now();
+
+  let chunks_num = 1 << worker.log_num_cpus();
+  let chunk_size = current_nodes.len() / chunks_num;
+  let mut next_indices = vec![None; chunks_num];
+  let mut sub_proofs = current_nodes
+    .chunks_mut(chunk_size)
+    .zip(next_indices.chunks_mut(1))
+    .enumerate()
+    .map(|(chunk_index, (sub_current_nodes, next_index))| {
+      // Filter index from chunk_index * chunk_size to (chunk_index + 1) * chunk_size
+      // and subtract chunk_index * chunk_size.
+      let sub_indices = sorted_indices
+        .iter()
+        .filter_map(|(_, &index)| {
+          if index >= chunk_index * chunk_size && index < (chunk_index + 1) * chunk_size {
+            Some(index - chunk_index * chunk_size)
+          } else {
+            None
+          }
+        })
+        .collect::<Vec<_>>();
+      // println!("sub_indices: {:?}", sub_indices);
+      if sub_indices.len() != 0 {
+        next_index[0] = Some(chunk_index);
+      }
+
+      gen_multi_proofs_in_place::<E, H>(sub_current_nodes, &sub_indices, 1)
+    })
+    .flatten()
+    .collect::<Vec<_>>();
+
+  // let next_indices = next_indices.iter().filter_map(|&v| v).collect::<Vec<_>>();
+  // println!("next_indices: {:?}", next_indices);
+
+  // The n-th sub-tree root exists the (chunk_size * n)-th elements of current_nodes.
+  // println!("chunk_size: {:?}", chunk_size);
+  let next_proofs = gen_multi_proofs_in_place::<E, H>(
+    &mut current_nodes,
+    &(0..chunks_num).map(|v| v * chunk_size).collect::<Vec<_>>(),
+    chunk_size,
+  );
+
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Calculated tree: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
+
+  let merkle_root = current_nodes[0].clone();
+
+  for (i, ((_, &index), leaf)) in sorted_indices.iter().zip(proof_leaves).enumerate() {
+    let next_index = index / chunk_size;
+    sub_proofs[i].leaf = leaf;
+    sub_proofs[i]
+      .nodes
+      .extend(next_proofs[next_index].nodes.clone());
+  }
+
+  let mut enhanced_sub_proofs = sub_proofs.iter().zip(sorted_indices).collect::<Vec<_>>();
+  enhanced_sub_proofs.sort_by(|(_, (a, _)), (_, (b, _))| a.partial_cmp(b).unwrap());
+  let proofs = enhanced_sub_proofs
+    .iter()
+    .map(|(v, _)| v.clone().clone())
+    .collect::<Vec<_>>();
+  (proofs, merkle_root)
+}
+
+pub fn verify_multi_branch<E: Element, H: Digest>(
+  root: &H,
+  indices: &[usize],
+  proofs: Vec<Proof<E, H>>,
+) -> Result<Vec<E>, Error> {
+  // println!("indices: {:?}", indices);
+
+  Ok(
+    indices
+      .iter()
+      .zip(proofs)
+      .map(|(index, proof)| proof.validate(&root, *index).expect(""))
+      .collect(),
+  )
 }
 
 #[test]
-fn test_multi_proof() {
-  let indices = [1, 2];
-  let leaves: Vec<Vec<u8>> = vec![
-    hex::decode("7fffffff").unwrap(),
-    hex::decode("80000000").unwrap(),
-    hex::decode("00000003").unwrap(),
-    hex::decode("00000000").unwrap(),
-  ];
-  let merkle_tree = merklize(&leaves);
-  let merkle_root = get_root(&merkle_tree);
-  let proofs = mk_multi_branch(&merkle_tree, &indices);
-  assert_eq!(
-    proofs
-      .iter()
-      .map(|proof| proof
-        .iter()
-        .map(|node| hex::encode(node))
-        .collect::<Vec<String>>())
-      .collect::<Vec<Vec<String>>>(),
-    [
-      [
-        "80000000",
-        "7fffffff",
-        "bfc3f121b61735fb3ac096a730b5f52909dc6f76c681f74fa2d59cf54cc4c74d"
-      ],
-      [
-        "00000003",
-        "00000000",
-        "f086026887af5fd609b58ecc4fec9ad514dba2c6fed57078d1f40ba0b2ecc4ca",
-      ],
-    ]
-  );
+fn test_serial_internal_roots() {
+  // let leaves: Vec<Vec<u8>> = vec![
+  //   hex::decode("7fffffff").unwrap(),
+  //   hex::decode("80000000").unwrap(),
+  //   hex::decode("00000003").unwrap(),
+  //   hex::decode("00000000").unwrap(),
+  //   hex::decode("7ffffffe").unwrap(),
+  //   hex::decode("80000001").unwrap(),
+  //   hex::decode("00000004").unwrap(),
+  //   hex::decode("00000001").unwrap(),
+  //   hex::decode("7ffffffd").unwrap(),
+  //   hex::decode("80000002").unwrap(),
+  //   hex::decode("00000005").unwrap(),
+  //   hex::decode("00000002").unwrap(),
+  //   hex::decode("7ffffffc").unwrap(),
+  //   hex::decode("80000003").unwrap(),
+  //   hex::decode("00000006").unwrap(),
+  //   hex::decode("00000003").unwrap(),
+  // ];
 
-  let res = verify_multi_branch(&merkle_root, &indices, &proofs);
-  let answer: Vec<Vec<u8>> = indices.iter().map(|index| leaves[*index].clone()).collect();
-  assert_eq!(res, answer);
+  let leaves: Vec<Vec<u8>> = vec![
+    hex::decode("00000000").unwrap(),
+    hex::decode("00000001").unwrap(),
+    hex::decode("00000002").unwrap(),
+    hex::decode("00000003").unwrap(),
+    hex::decode("00000004").unwrap(),
+    hex::decode("00000005").unwrap(),
+    hex::decode("00000006").unwrap(),
+    hex::decode("00000007").unwrap(),
+    hex::decode("00000008").unwrap(),
+    hex::decode("00000009").unwrap(),
+    hex::decode("0000000a").unwrap(),
+    hex::decode("0000000b").unwrap(),
+    hex::decode("0000000c").unwrap(),
+    hex::decode("0000000d").unwrap(),
+    hex::decode("0000000e").unwrap(),
+    hex::decode("0000000f").unwrap(),
+  ];
+
+  let worker = Worker::new_with_cpus(4);
+
+  let indices = [10, 4, 6, 3, 6, 8];
+  let (merkle_proofs, merkle_root) = gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(
+    &leaves
+      .iter()
+      .map(|v| lazily!(v.to_vec()))
+      .collect::<Vec<_>>(),
+    &indices,
+    &worker,
+  );
+  // println!("{:?} {:?}", merkle_proofs, merkle_root);
+
+  let mut merkle_tree: SerialMerkleTree<Vec<u8>, BlakeDigest> = SerialMerkleTree::new();
+  merkle_tree.update(leaves.clone());
+  let merkle_root2 = merkle_tree.root().unwrap();
+  let mut merkle_proofs2 = vec![];
+  merkle_proofs2.push(merkle_tree.gen_proof(indices[0]));
+  merkle_proofs2.push(merkle_tree.gen_proof(indices[1]));
+  merkle_proofs2.push(merkle_tree.gen_proof(indices[2]));
+  merkle_proofs2.push(merkle_tree.gen_proof(indices[3]));
+  merkle_proofs2.push(merkle_tree.gen_proof(indices[4]));
+  merkle_proofs2.push(merkle_tree.gen_proof(indices[5]));
+  // println!("merkle_proofs2: {:?}", merkle_proofs2);
+  // println!("merkle_proofs1: {:?}", merkle_proofs);
+  // println!(
+  //   "{:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
+  //   merkle_proofs2[0].nodes,
+  //   merkle_proofs2[1].nodes,
+  //   merkle_proofs2[2].nodes,
+  //   merkle_proofs2[3].nodes,
+  //   merkle_proofs2[4].nodes,
+  //   merkle_proofs2[5].nodes,
+  //   merkle_proofs2[6].nodes,
+  //   merkle_proofs2[7].nodes,
+  // );
+  // println!(
+  //   "{:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
+  //   merkle_proofs[0].nodes,
+  //   merkle_proofs[1].nodes,
+  //   merkle_proofs[2].nodes,
+  //   merkle_proofs[3].nodes,
+  //   merkle_proofs[4].nodes,
+  //   merkle_proofs[5].nodes,
+  //   merkle_proofs[6].nodes,
+  //   merkle_proofs[7].nodes
+  // );
+
+  // for i in 0..indices.len() {
+  //   assert_eq!(merkle_proofs[i].leaf, merkle_proofs2[i].leaf);
+  //   assert_eq!(merkle_proofs[i].nodes, merkle_proofs2[i].nodes);
+  // }
+  assert_eq!(merkle_root, merkle_root2);
+
+  verify_multi_branch(&merkle_root, &indices, merkle_proofs).unwrap();
 }
 
-pub fn bin_length(proof: &[Vec<Vec<u8>>]) -> usize {
-  proof.len() * 2
-    + proof
-      .iter()
-      .map(|xs| xs.iter().fold(0, |acc, x| acc + x.len()) + xs.len() / 8)
-      .fold(0, |acc, val| acc + val)
+impl<E: Element, H: Digest> SerialMerkleTree<E, H> {
+  pub fn new() -> Self {
+    let leaves = vec![];
+    let nodes = vec![];
+    SerialMerkleTree { leaves, nodes }
+  }
+
+  pub fn gen_internal_roots<I: IntoIterator<Item = E>>(&mut self, leaves: I, height: u32) -> H {
+    let mut leaves = leaves.into_iter();
+    // let leaves: Vec<E> = leaves.into_iter().collect::<Vec<E>>();
+    // println!("leaves: {:?}", leaves);
+
+    // assert!(is_a_power_of_2(leaves.len()));
+    let chunk_size = 2usize.pow(height);
+
+    let mut internal_roots = vec![H::default(); chunk_size];
+    for (chunk_index, internal_root) in internal_roots.chunks_mut(1).enumerate() {
+      let beginning_index = chunk_index * chunk_size;
+      let mut sub_nodes: Vec<H> = vec![];
+      println!("{}", chunk_index);
+
+      for i in beginning_index..(beginning_index + chunk_size) {
+        let digest = H::hash(leaves.nth(i).get_or_insert(E::default()).as_ref());
+        sub_nodes.push(digest);
+      }
+
+      while sub_nodes.len() >= 2 {
+        sub_nodes = sub_nodes
+          .chunks(2)
+          .map(|node| {
+            let mut message: Vec<u8> = vec![];
+            message.extend(node[0].as_ref());
+            if node.len() > 1 {
+              message.extend(node[1].as_ref());
+            }
+            H::hash(&message)
+          })
+          .collect::<Vec<_>>();
+      }
+
+      internal_root[0] = sub_nodes[0].clone();
+    }
+
+    while internal_roots.len() >= 2 {
+      internal_roots = internal_roots
+        .chunks(2)
+        .map(|node| {
+          let mut message: Vec<u8> = vec![];
+          message.extend(node[0].as_ref());
+          if node.len() > 1 {
+            message.extend(node[1].as_ref());
+          }
+          H::hash(&message)
+        })
+        .collect::<Vec<_>>();
+    }
+
+    internal_roots[0].clone()
+  }
+}
+
+pub trait MerkleTree<E: Element, H: Digest> {
+  fn width(&self) -> usize;
+  fn root(&self) -> Option<H>;
+  fn update<I: IntoIterator<Item = E>>(&mut self, into: I);
+  fn gen_proof(&self, index: usize) -> Proof<E, H>;
+}
+
+pub struct SerialMerkleTree<E: Element, H: Digest> {
+  leaves: Vec<E>,
+  nodes: Vec<Vec<H>>,
+}
+
+impl<E: Element, H: Digest> MerkleTree<E, H> for SerialMerkleTree<E, H> {
+  fn width(&self) -> usize {
+    self.leaves.len()
+  }
+
+  fn root(&self) -> Option<H> {
+    if let Some(n) = self.nodes.last() {
+      Some(n[0].clone())
+    } else {
+      None
+    }
+  }
+
+  fn update<I: IntoIterator<Item = E>>(&mut self, leaves: I) {
+    let leaves: Vec<E> = leaves.into_iter().collect::<Vec<E>>();
+    // println!("leaves: {:?}", leaves);
+
+    // assert!(is_a_power_of_2(leaves.len()));
+
+    let mut nodes: Vec<Vec<H>> = vec![];
+    nodes.push(
+      leaves
+        .iter()
+        .map(|message| H::hash(message.as_ref()))
+        .collect(),
+    );
+    let mut current_nodes = nodes.last().unwrap();
+
+    while current_nodes.len() >= 2 {
+      let next_nodes: Vec<H> = current_nodes
+        .chunks(2)
+        .map(|node| {
+          let mut message: Vec<u8> = vec![];
+          message.extend(node[0].as_ref());
+          if node.len() > 1 {
+            message.extend(node[1].as_ref());
+          }
+          let hash = H::hash(&message);
+          // println!("node: {:?}", node[0]);
+          // println!("node: {:?}", node[1]);
+          // println!("hash: {:?}", hash);
+          hash
+        })
+        .collect();
+      nodes.push(next_nodes);
+      current_nodes = nodes.last().unwrap();
+    }
+    self.leaves = leaves;
+    self.nodes = nodes;
+  }
+
+  // Returns the nodes that need to verify Merkle proof without root and leaf.
+  fn gen_proof(&self, index: usize) -> Proof<E, H> {
+    let mut tmp = index;
+    let mut proof_nodes = vec![];
+
+    for row in self.nodes.iter().take(self.nodes.len() - 1) {
+      proof_nodes.push(row[tmp ^ 1].clone());
+      tmp /= 2;
+    }
+    let proof_leaf = self.leaves[index].clone();
+    Proof {
+      leaf: proof_leaf,
+      nodes: proof_nodes,
+    }
+  }
 }

@@ -1,4 +1,4 @@
-use r1cs_stark::run2::run_with_file_path;
+use r1cs_stark::run::run_with_file_path;
 
 fn main() {
   let mut args = std::env::args().skip(1);

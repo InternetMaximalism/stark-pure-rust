@@ -4,7 +4,7 @@ use std::convert::TryInto;
 use crate::delayed::Delayed;
 use crate::fft::expand_root_of_unity;
 use crate::lazily;
-use crate::merkle_tree3::{gen_multi_proofs_multi_core, verify_multi_branch, BlakeDigest, Proof};
+use crate::merkle_tree::{gen_multi_proofs_multi_core, verify_multi_branch, BlakeDigest, Proof};
 use crate::multicore::Worker;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
 // use crate::permuted_tree::{bin_length, get_root, merklize, mk_multi_branch, verify_multi_branch};
