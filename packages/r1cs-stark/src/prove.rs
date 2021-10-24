@@ -10,6 +10,7 @@ use fri::fri::prove_low_degree;
 use fri::poly_utils::{eval_poly_at, multi_inv};
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
 use num::bigint::BigUint;
+use std::io::Error;
 
 pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   witness_trace: &[T],
@@ -23,7 +24,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   flag2: &[T],
   n_constraints: usize,
   n_wires: usize,
-) -> StarkProof {
+) -> Result<StarkProof, Error> {
   // println!("n_cons: {:?}", n_constraints);
   // println!("n_wires: {:?}", n_wires);
   // println!("n_public_wires: {:?}", public_wires.len());
@@ -122,7 +123,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let z_polynomial = calc_z_polynomial(steps);
   let z_evaluations = best_fft(z_polynomial, &g2, &worker, log_order_of_g2);
   // println!("z_evaluations: {:?}", z_evaluations);
-  println!("Computed Z1 polynomial");
+  println!("Computed Z polynomial");
 
   let q1_evaluations = calc_q1_evaluations(
     &s_evaluations,
@@ -363,12 +364,12 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let fri_proof = prove_low_degree::<T>(&l_evaluations, g2, precision / 4, skips as u32);
   println!("Computed {} spot checks", SPOT_CHECK_SECURITY_FACTOR);
 
-  StarkProof {
+  Ok(StarkProof {
     m_root,
     l_root,
     a_root,
     main_branches,
     linear_comb_branches,
     fri_proof,
-  }
+  })
 }

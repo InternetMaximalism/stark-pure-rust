@@ -8,6 +8,7 @@ use fri::fri::verify_low_degree_proof;
 use fri::poly_utils::eval_poly_at;
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
 use num::bigint::BigUint;
+use std::io::Error;
 
 pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   proof: StarkProof,
@@ -20,7 +21,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   flag2: &[T],
   n_constraints: usize,
   n_wires: usize,
-) -> Result<bool, String> {
+) -> Result<bool, Error> {
   let original_steps = coefficients.len();
   assert!(original_steps <= 3 * n_constraints * n_wires);
   assert!(original_steps % 3 == 0);

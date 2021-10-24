@@ -14,6 +14,8 @@ use crate::poly_utils::{eval_poly_at, eval_quartic, lagrange_interp, multi_inter
 use crate::utils::get_pseudorandom_indices;
 use serde::{Deserialize, Serialize};
 
+const MIN_DEG_DIRECT_CHECKING: usize = 16;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum FriProof {
   Last {
@@ -24,6 +26,24 @@ pub enum FriProof {
     column_branches: Vec<Proof<Vec<u8>, BlakeDigest>>,
     poly_branches: Vec<Proof<Vec<u8>, BlakeDigest>>,
   },
+}
+
+pub fn prove_low_degree_directly<T: PrimeField + FromBytes + ToBytes>(
+  values: &[T],
+  root_of_unity: T,
+  max_deg_plus_1: usize,
+  exclude_multiples_of: u32,
+) -> Vec<FriProof> {
+  let worker = Worker::new();
+  prove_low_degree_rec(
+    vec![],
+    worker,
+    values,
+    root_of_unity,
+    max_deg_plus_1,
+    max_deg_plus_1,
+    exclude_multiples_of,
+  )
 }
 
 pub fn prove_low_degree<T: PrimeField + FromBytes + ToBytes>(
@@ -39,6 +59,7 @@ pub fn prove_low_degree<T: PrimeField + FromBytes + ToBytes>(
     values,
     root_of_unity,
     max_deg_plus_1,
+    MIN_DEG_DIRECT_CHECKING,
     exclude_multiples_of,
   )
 }
@@ -49,6 +70,7 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   values: &[T],
   root_of_unity: T,
   max_deg_plus_1: usize,
+  deg_direct_checking: usize,
   exclude_multiples_of: u32,
 ) -> Vec<FriProof> {
   println!(
@@ -56,13 +78,17 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     values.len(),
     max_deg_plus_1
   );
+  assert!(
+    deg_direct_checking >= MIN_DEG_DIRECT_CHECKING,
+    "the degree of direct checking is too low"
+  );
 
   // Calculate the set of x coordinates
   let xs = expand_root_of_unity(root_of_unity);
 
   // If the degree we are checking for is less than or equal to 32,
   // use the polynomial directly as a proof
-  if max_deg_plus_1 <= 16 {
+  if max_deg_plus_1 <= deg_direct_checking {
     println!("Produced FRI proof");
     let mut pts: Vec<usize> = if exclude_multiples_of != 0 {
       (0..values.len())
@@ -193,6 +219,7 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     &column,
     root_of_unity.pow_vartime(&[4u64]),
     max_deg_plus_1 / 4,
+    deg_direct_checking,
     exclude_multiples_of,
   )
 }
@@ -322,17 +349,21 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
     rou_deg /= 4;
   }
 
-  // Verify the direct components of the proof
   println!("Verifying degree <= {:?}", max_deg_plus_1);
-  assert!(max_deg_plus_1 <= 16);
+  assert!(
+    max_deg_plus_1 >= MIN_DEG_DIRECT_CHECKING / 2,
+    "the degree of direct checking is too low"
+  );
 
-  // Check the Merkle root matches up
   let last_data = if let Some(FriProof::Last { last }) = proof.last() {
     last.iter().map(|v| lazily!(v.to_vec())).collect::<Vec<_>>()
   } else {
     return Err("The last element of FRI proofs must be FriProof::Last.");
     // return Err(SimpleError::new("The last element of FRI proofs must be FriProof::Last."));
   };
+  assert!(last_data.len() > max_deg_plus_1);
+
+  // Check the Merkle root matches up
   let (_, m_root) = gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&last_data, &[], &worker);
   // let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
   //   PermutedParallelMerkleTree::new(&worker);
@@ -355,7 +386,7 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
     .map(|x| T::from_bytes_le(x).unwrap())
     .collect();
 
-  assert!(pts.len() > max_deg_plus_1);
+  // Verify the direct components of the proof
   let rest = pts.split_off(max_deg_plus_1); // pts[max_deg_plus_1..]
   let x_vals: Vec<T> = pts.iter().map(|&pos| xs[pos]).collect();
   let y_vals: Vec<T> = pts.iter().map(|&pos| decoded_last_data[pos]).collect();
