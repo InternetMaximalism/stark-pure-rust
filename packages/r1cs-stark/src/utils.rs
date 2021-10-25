@@ -6,6 +6,8 @@ use ff_utils::ff_utils::{FromBytes, ToBytes};
 use fri::fri::FriProof;
 use fri::poly_utils::{lagrange_interp, multi_inv, sparse};
 use fri::utils::{blake, get_pseudorandom_indices};
+#[allow(unused_imports)]
+use log::{debug, info, warn};
 use num::bigint::BigUint;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -378,9 +380,7 @@ pub fn calc_q3_evaluations<T: PrimeField>(
 pub fn calc_d1_polynomial<T: PrimeField>(q1_evaluations: &[T], inv_z_evaluations: &[T]) -> Vec<T> {
   for (pos, (&q, &z)) in q1_evaluations.iter().zip(inv_z_evaluations).enumerate() {
     if z == T::zero() {
-      if q != T::zero() {
-        println!("invalid d1: {:?} {:?} {:?}", pos, q, z);
-      }
+      assert_eq!(q, T::zero(), "invalid D1: {:?} {:?} {:?}", pos, q, z);
     }
   }
   q1_evaluations
@@ -394,9 +394,7 @@ pub fn calc_d1_polynomial<T: PrimeField>(q1_evaluations: &[T], inv_z_evaluations
 pub fn calc_d2_polynomial<T: PrimeField>(q2_evaluations: &[T], inv_z_evaluations: &[T]) -> Vec<T> {
   for (pos, (&q, &z)) in q2_evaluations.iter().zip(inv_z_evaluations).enumerate() {
     if z == T::zero() {
-      if q != T::zero() {
-        println!("invalid d2: {:?} {:?} {:?}", pos, q, z);
-      }
+      assert_eq!(q, T::zero(), "invalid D2: {:?} {:?} {:?}", pos, q, z);
     }
   }
   q2_evaluations
@@ -410,9 +408,7 @@ pub fn calc_d2_polynomial<T: PrimeField>(q2_evaluations: &[T], inv_z_evaluations
 pub fn calc_d3_polynomial<T: PrimeField>(q3_evaluations: &[T], inv_z_evaluations: &[T]) -> Vec<T> {
   for (pos, (&q, &z)) in q3_evaluations.iter().zip(inv_z_evaluations).enumerate() {
     if z == T::zero() {
-      if q != T::zero() {
-        println!("invalid d3: {:?} {:?} {:?}", pos, q, z);
-      }
+      assert_eq!(q, T::zero(), "invalid D3: {:?} {:?} {:?}", pos, q, z);
     }
   }
   q3_evaluations
@@ -491,9 +487,7 @@ pub fn calc_b2_evaluations<T: PrimeField>(
     .enumerate()
   {
     if zb2 == T::zero() {
-      if s != i2 {
-        println!("pos: {:?} {:?} {:?}", pos, s, i2);
-      }
+      assert_eq!(s, i2, "invalid B2: {:?} {:?} {:?}", pos, s, i2);
     }
   }
 
@@ -518,9 +512,7 @@ pub fn calc_b3_evaluations<T: PrimeField>(
     .enumerate()
   {
     if zb3 == T::zero() {
-      if a != i3 {
-        println!("pos: {:?} {:?} {:?}", pos, a, i3);
-      }
+      assert_eq!(a, i3, "invalid B3: {:?} {:?} {:?}", pos, a, i3);
     }
   }
 

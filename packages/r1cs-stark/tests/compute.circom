@@ -4,7 +4,7 @@ template X() {
     signal x2;
     signal x3;
     var a;
-    compute {
+    {
         a = (x*x*x-2*x*x+6)/x;
         y <-- a;
     }
