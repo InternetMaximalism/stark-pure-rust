@@ -1,5 +1,3 @@
 target
 /tests/*_proof.json
 /tests/*_public.json
-/logs/*
-!/logs/.gitkeep
