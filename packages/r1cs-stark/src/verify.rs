@@ -7,6 +7,8 @@ use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
 use fri::fri::verify_low_degree_proof;
 use fri::poly_utils::eval_poly_at;
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
+#[allow(unused_imports)]
+use log::{debug, info};
 use num::bigint::BigUint;
 use std::io::Error;
 
@@ -109,7 +111,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
       (j + 2 * original_steps / 3 * skips) % precision,
     ]);
   }
-  // println!("{:?}", positions);
+  // println!("positions: {:?}", positions);
 
   // Performs the spot checks
   let main_branches = main_branches;

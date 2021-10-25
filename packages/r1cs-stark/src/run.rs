@@ -1,4 +1,4 @@
-use crate::prove::{mk_r1cs_proof, test_mk_d2_proof};
+use crate::prove::mk_r1cs_proof;
 use crate::reader::{
   read_r1cs, read_witness, Coefficient, Constraints, Factor, Header, R1csContents,
 };
@@ -8,6 +8,9 @@ use circom2bellman_core::Constraint;
 use ff::{Field, PrimeField};
 use ff_utils::ff_utils::FromBytes;
 use ff_utils::fp::Fp;
+#[allow(unused_imports)]
+use log::{debug, info};
+use num::BigUint;
 use std::cmp::max;
 use std::fs::File;
 use std::io::Error;
@@ -120,7 +123,7 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
   let mut wire_using_list: Vec<Vec<(u8, usize)>> = vec![vec![]; n_wires as usize]; // Vec<Vec<Position>>
   let mut acc_n_coeff = 0usize;
   let mut last_coeff_list = vec![];
-  for constraint in constraints {
+  for (_index, constraint) in constraints.iter().enumerate() {
     let Factor {
       n_coefficient: n_a_coeff,
       coefficients: a_coefficients,
@@ -135,6 +138,8 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
     } = &constraint.factors[2];
     let n_coeff = *max(max(n_a_coeff, n_b_coeff), n_c_coeff);
 
+    // let target_index = |v| v == 0;
+
     let n_wires = n_wires as usize;
 
     let mut t = T::zero();
@@ -143,6 +148,9 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
         let Coefficient { wire_id, value } = &a_coefficients[i as usize];
         let wire_id = *wire_id as usize;
         let w = witness[wire_id];
+        // if target_index(index) {
+        //   println!("A: {:?} {:?}", w, a_coefficients[i as usize]);
+        // }
         let c = T::from_bytes_le(value).unwrap();
         // println!("w: {:?}", w);
         // println!("c: {:?}", c);
@@ -165,6 +173,9 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
         a_trace.push(t);
       }
     }
+    // if target_index(index) {
+    //   println!("t_A: {:?}", t);
+    // }
 
     let mut t = T::zero();
     for i in 0..n_coeff {
@@ -172,6 +183,9 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
         let Coefficient { wire_id, value } = &b_coefficients[i as usize];
         let wire_id = *wire_id as usize;
         let w = witness[wire_id];
+        // if target_index(index) {
+        //   println!("B: {:?} {:?}", w, b_coefficients[i as usize]);
+        // }
         let c = T::from_bytes_le(value).unwrap();
         // println!("w: {:?}", w);
         // println!("c: {:?}", c);
@@ -194,6 +208,9 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
         b_trace.push(t);
       }
     }
+    // if target_index(index) {
+    //   println!("t_B: {:?}", t);
+    // }
 
     let mut t = T::zero();
     for i in 0..n_coeff {
@@ -201,6 +218,9 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
         let Coefficient { wire_id, value } = &c_coefficients[i as usize];
         let wire_id = *wire_id as usize;
         let w = witness[wire_id];
+        // if target_index(index) {
+        //   println!("C: {:?} {:?}", w, c_coefficients[i as usize]);
+        // }
         let c = T::from_bytes_le(value).unwrap();
         // println!("w: {:?}", w);
         // println!("c: {:?}", c);
@@ -223,6 +243,9 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
         c_trace.push(t);
       }
     }
+    // if target_index(index) {
+    //   println!("t_C: {:?}", t);
+    // }
 
     acc_n_coeff += n_coeff as usize;
     last_coeff_list.push(acc_n_coeff - 1);
@@ -257,25 +280,27 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
 }
 
 fn calc_flags<T: PrimeField>(
-  coefficients: &[T],
   last_coeff_list: &[usize],
+  coefficients_len: usize,
 ) -> (Vec<T>, Vec<T>, Vec<T>) {
-  let a_trace_len = coefficients.len() / 3;
+  assert_eq!(coefficients_len % 3, 0);
+  let a_trace_len = coefficients_len / 3;
 
-  let mut flag0 = vec![];
-  let mut flag1 = vec![];
-  let mut flag2 = vec![];
-  for k in 0..(coefficients.len()) {
-    let f0 = 1u64;
-    let f1: u64 = if !last_coeff_list.contains(&((k + a_trace_len - 1) % a_trace_len)) {
-      1
-    } else {
-      0
-    };
-    let f2: u64 = if last_coeff_list.contains(&k) { 1 } else { 0 };
-    flag0.push(T::from(f0));
-    flag1.push(T::from(f1));
-    flag2.push(T::from(f0 * f2));
+  let flag0 = vec![T::one(); coefficients_len];
+  let mut flag1 = vec![T::one(); coefficients_len];
+  let first_coeff_list = last_coeff_list
+    .iter()
+    .map(|v| (v + 1) % a_trace_len)
+    .collect::<Vec<_>>();
+  for k in first_coeff_list {
+    flag1[k] = T::zero();
+    flag1[k + a_trace_len] = T::zero();
+    flag1[k + a_trace_len * 2] = T::zero();
+  }
+
+  let mut flag2 = vec![T::zero(); coefficients_len];
+  for k in last_coeff_list {
+    flag2[*k] = T::from(1u64);
   }
 
   (flag0, flag1, flag2)
@@ -288,7 +313,7 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
     n_public_inputs,
     n_public_outputs,
     n_private_inputs: _,
-    n_labels: _,
+    n_labels,
     n_constraints,
     n_wires,
   } = r1cs.header;
@@ -298,6 +323,11 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
   let n_wires = n_wires as usize;
   println!("n_constraints: {:?}", n_constraints);
   println!("n_wires: {:?}", n_wires);
+  println!(
+    "n_public_wires: {:?} + {:?}",
+    n_public_inputs, n_public_outputs
+  );
+  println!("n_labels: {:?}", n_labels);
 
   // println!("prime_number: {:?}", prime_number);
   // assert_eq!(
@@ -335,10 +365,11 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
     end.as_secs(),
     end.subsec_nanos() / 1_000_000
   );
+  // println!("last_coeff_list: {:?}", last_coeff_list);
 
   let start = std::time::Instant::now();
 
-  let (flag0, flag1, flag2) = calc_flags(&coefficients, &last_coeff_list);
+  let (flag0, flag1, flag2) = calc_flags(&last_coeff_list, coefficients.len());
   let end: std::time::Duration = start.elapsed();
   println!(
     "Generated flags: {}.{:03}s",
@@ -347,6 +378,7 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
   );
 
   let a_trace_len = coefficients.len() / 3;
+  println!("a_trace_len: {}", a_trace_len);
 
   println!("permuted_indices");
   let start = std::time::Instant::now();
@@ -366,7 +398,7 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
   // println!("wire_using_list: {:?}", wire_using_list);
   let end: std::time::Duration = start.elapsed();
   println!(
-    "Generated flags: {}.{:03}s",
+    "Generated permuted_indices: {}.{:03}s",
     end.as_secs(),
     end.subsec_nanos() / 1_000_000
   );
@@ -383,21 +415,21 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
   // println!("public_first_indices: {:?}", public_first_indices);
   let end: std::time::Duration = start.elapsed();
   println!(
-    "Generated flags: {}.{:03}s",
+    "Generated public_first_indices: {}.{:03}s",
     end.as_secs(),
     end.subsec_nanos() / 1_000_000
   );
 
-  test_mk_d2_proof(
-    &witness_trace,
-    &computational_trace,
-    &permuted_indices,
-    &coefficients,
-    &flag2,
-    n_constraints,
-    n_wires,
-  )
-  .unwrap();
+  // test_mk_d2_proof(
+  //   &witness_trace,
+  //   &computational_trace,
+  //   &permuted_indices,
+  //   &coefficients,
+  //   &flag2,
+  //   n_constraints,
+  //   n_wires,
+  // )
+  // .unwrap();
 
   mk_r1cs_proof(
     &witness_trace,
@@ -449,7 +481,7 @@ fn verify_with_witness(
   let a_trace_len = coefficients.len() / 3;
 
   println!("Generate flags");
-  let (flag0, flag1, flag2) = calc_flags(&coefficients, &last_coeff_list);
+  let (flag0, flag1, flag2) = calc_flags(&last_coeff_list, coefficients.len());
 
   println!("permuted_indices");
   let mut permuted_indices = vec![0usize; coefficients.len()];
@@ -555,6 +587,14 @@ pub fn run_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
   BufReader::new(witness_file).read_to_end(&mut raw_witness)?;
   let witness = read_witness(&raw_witness);
 
+  let witness_ff = witness
+    .iter()
+    .map(|v| BigUint::from_bytes_le(v))
+    .collect::<Vec<_>>();
+  let wtns_json_file_path = "./tests/sha256_2_test.wtns.json";
+  let mut wtns_json_file = File::create(wtns_json_file_path)?;
+  write!(wtns_json_file, "{:?}", witness_ff)?;
+
   let proof = prove_with_witness(&r1cs, &witness)?;
   let serialized_proof = serde_json::to_string(&proof)?;
   let mut file = File::create(proof_json_path)?;
@@ -579,9 +619,25 @@ fn test_prove_and_verify_with_file_path() {
 }
 
 #[test]
-fn test_run_with_file_path() {
+fn test_run_compute_with_file_path() {
   let r1cs_file_path = "./tests/compute.r1cs";
   let witness_file_path = "./tests/compute.wtns";
   let proof_json_path = "./tests/compute_proof.json";
+  run_with_file_path(r1cs_file_path, witness_file_path, proof_json_path).unwrap();
+}
+
+#[test]
+fn test_run_pedersen_with_file_path() {
+  let r1cs_file_path = "./tests/pedersen_test.r1cs";
+  let witness_file_path = "./tests/pedersen_test.wtns";
+  let proof_json_path = "./tests/pedersen_test_proof.json";
+  run_with_file_path(r1cs_file_path, witness_file_path, proof_json_path).unwrap();
+}
+
+#[test]
+fn test_run_poseidon_with_file_path() {
+  let r1cs_file_path = "./tests/poseidon3_test.r1cs";
+  let witness_file_path = "./tests/poseidon3_test.wtns";
+  let proof_json_path = "./tests/poseidon3_test_proof.json";
   run_with_file_path(r1cs_file_path, witness_file_path, proof_json_path).unwrap();
 }

@@ -9,6 +9,8 @@ use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
 use fri::fri::prove_low_degree;
 use fri::poly_utils::{eval_poly_at, multi_inv};
 use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
+#[allow(unused_imports)]
+use log::{debug, info};
 use num::bigint::BigUint;
 use std::io::Error;
 
@@ -28,7 +30,6 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // println!("n_cons: {:?}", n_constraints);
   // println!("n_wires: {:?}", n_wires);
   // println!("n_public_wires: {:?}", public_wires.len());
-  // println!("last_coeff_list: {:?}", last_coeff_list);
   let original_steps = coefficients.len();
   println!("original_steps: {:?}", original_steps);
   assert!(original_steps <= 3 * n_constraints * n_wires);
@@ -60,6 +61,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
 
   let mut coefficients = coefficients.to_vec();
   coefficients.extend(vec![T::zero(); steps - original_steps]);
+  // println!("coefficients.len(): {:?}", coefficients.len());
 
   let mut witness_trace = witness_trace.to_vec();
   witness_trace.extend(vec![T::zero(); steps - original_steps]);
@@ -81,7 +83,14 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
 
   let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) / precision
   let g2 = T::multiplicative_generator().pow_vartime(&times); // g2^precision = 1 mod modulus
+  let start = std::time::Instant::now();
   let xs = expand_root_of_unity(g2); // Powers of the higher-order root of unity
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Generated expand root of unity: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
   let skips = precision / steps; // EXTENSION_FACTOR
   let g1 = xs[skips]; // root of unity x such that x^steps = 1
   let log_order_of_g1 = log_steps as u32;
@@ -336,7 +345,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   .iter()
   .map(|&i| i as usize)
   .collect::<Vec<usize>>();
-  // println!("{:?}", positions);
+  // println!("positions: {:?}", positions);
 
   let (linear_comb_branches, _) =
     gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&l_evaluations_str, &positions, &worker);
@@ -351,6 +360,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
       (j + original_steps / 3 * 2 * skips) % precision,
     ]);
   }
+  // println!("augmented_positions: {:?}", augmented_positions);
 
   let (main_branches, _) = gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(
     &poly_evaluations_str,
