@@ -70,16 +70,16 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
 
   // Interpolate the computational trace into a polynomial P, with each step
   // along a successive power of g1
-  info!("calculate expanding polynomials");
+  println!("calculate expanding polynomials");
   let worker = Worker::new();
 
   let k_polynomial = inv_best_fft(coefficients, &g1, &worker, log_order_of_g1);
-  info!("Converted coefficients into a polynomial and low-degree extended it");
+  println!("Converted coefficients into a polynomial and low-degree extended it");
 
   let f0_polynomial = inv_best_fft(flag0.to_vec(), &g1, &worker, log_order_of_g1);
   let f1_polynomial = inv_best_fft(flag1.to_vec(), &g1, &worker, log_order_of_g1);
   let f2_polynomial = inv_best_fft(flag2.to_vec(), &g1, &worker, log_order_of_g1);
-  info!("Converted flags into a polynomial and low-degree extended it");
+  println!("Converted flags into a polynomial and low-degree extended it");
 
   // Verifies the low-degree proofs
   assert!(
@@ -97,7 +97,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   .collect::<Vec<usize>>();
   let mut augmented_positions = vec![];
   for &j in positions.iter().peekable() {
-    // debug!(
+    // println!(
     //   "{:?} {:?} {:?} {:?}",
     //   j,
     //   (j + precision - skips) % precision,
@@ -111,7 +111,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
       (j + 2 * original_steps / 3 * skips) % precision,
     ]);
   }
-  // debug!("positions: {:?}", positions);
+  // println!("positions: {:?}", positions);
 
   // Performs the spot checks
   let main_branches = main_branches;
@@ -129,13 +129,13 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   let converted_indices = convert_usize_iter_to_ff_vec(0..steps);
   let index_polynomial = inv_best_fft(converted_indices, &g1, &worker, log_order_of_g1);
   let ext_indices = best_fft(index_polynomial, &g2, &worker, log_order_of_g2);
-  info!("Computed extended index polynomial");
+  println!("Computed extended index polynomial");
 
   let converted_permuted_indices = convert_usize_iter_to_ff_vec(permuted_indices.clone());
   let permuted_polynomial = inv_best_fft(converted_permuted_indices, &g1, &worker, log_order_of_g1);
   let ext_permuted_indices = best_fft(permuted_polynomial, &g2, &worker, log_order_of_g2);
-  // debug!("ext_permuted_indices: {:?}", ext_permuted_indices);
-  info!("Computed extended permuted index polynomial");
+  // println!("ext_permuted_indices: {:?}", ext_permuted_indices);
+  println!("Computed extended permuted index polynomial");
 
   // let interpolant = {
   //   let mut x_vals = vec![];
@@ -156,10 +156,10 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
 
   let x_of_last_step = xs[(steps - 1) * skips];
   let interpolant3 = calc_i3_polynomial(&xs, skips);
-  info!("Computed boundary polynomial");
+  println!("Computed boundary polynomial");
 
   let r: Vec<T> = get_random_ff_values(a_root.as_ref(), precision as u32, 3, 0);
-  // debug!("r: {:?}", r);
+  // println!("r: {:?}", r);
 
   // let k0 = T::one();
   // let k1 = T::from_str(&mk_seed(&[m_root.as_ref().to_vec(), b"\x01".to_vec()])).unwrap();
@@ -255,6 +255,6 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     );
   }
 
-  info!("Verified {} consistency checks", SPOT_CHECK_SECURITY_FACTOR);
+  println!("Verified {} consistency checks", SPOT_CHECK_SECURITY_FACTOR);
   Ok(true)
 }
