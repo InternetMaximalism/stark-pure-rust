@@ -280,25 +280,27 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
 }
 
 fn calc_flags<T: PrimeField>(
-  coefficients: &[T],
   last_coeff_list: &[usize],
+  coefficients_len: usize,
 ) -> (Vec<T>, Vec<T>, Vec<T>) {
-  let a_trace_len = coefficients.len() / 3;
+  assert_eq!(coefficients_len % 3, 0);
+  let a_trace_len = coefficients_len / 3;
 
-  let mut flag0 = vec![];
-  let mut flag1 = vec![];
-  let mut flag2 = vec![];
-  for k in 0..(coefficients.len()) {
-    let f0 = 1u64;
-    let f1: u64 = if !last_coeff_list.contains(&((k + a_trace_len - 1) % a_trace_len)) {
-      1
-    } else {
-      0
-    };
-    let f2: u64 = if last_coeff_list.contains(&k) { 1 } else { 0 };
-    flag0.push(T::from(f0));
-    flag1.push(T::from(f1));
-    flag2.push(T::from(f0 * f2));
+  let flag0 = vec![T::one(); coefficients_len];
+  let mut flag1 = vec![T::one(); coefficients_len];
+  let first_coeff_list = last_coeff_list
+    .iter()
+    .map(|v| (v + 1) % a_trace_len)
+    .collect::<Vec<_>>();
+  for k in first_coeff_list {
+    flag1[k] = T::zero();
+    flag1[k + a_trace_len] = T::zero();
+    flag1[k + a_trace_len * 2] = T::zero();
+  }
+
+  let mut flag2 = vec![T::zero(); coefficients_len];
+  for k in last_coeff_list {
+    flag2[*k] = T::from(1u64);
   }
 
   (flag0, flag1, flag2)
