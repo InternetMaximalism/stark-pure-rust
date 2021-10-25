@@ -20,7 +20,7 @@ pub fn read_witness(bytes: &[u8]) -> Vec<Vec<u8>> {
     field_order += p.get_u32_le() * &power;
     power *= BigUint::from(1u64 << 32);
   }
-  // println!("field size: {}", field_order);
+  // info!("field size: {}", field_order);
 
   let n_wires = p.get_u32_le();
   p.get_u32_le(); // n_constraints

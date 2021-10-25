@@ -1,6 +1,26 @@
 use r1cs_stark::run::run_with_file_path;
+use simplelog;
+use std::fs::File;
+
+fn init_logger() {
+  simplelog::CombinedLogger::init(vec![
+    simplelog::TermLogger::new(
+      simplelog::LevelFilter::Info,
+      simplelog::Config::default(),
+      simplelog::TerminalMode::Mixed,
+    ),
+    simplelog::WriteLogger::new(
+      simplelog::LevelFilter::Debug,
+      simplelog::Config::default(),
+      File::create("./logs/debug.log").unwrap(),
+    ),
+  ])
+  .unwrap();
+}
 
 fn main() {
+  init_logger();
+
   let mut args = std::env::args().skip(1);
   let r1cs_file_path = args.next().unwrap();
   let witness_file_path = args.next().unwrap();

@@ -6,6 +6,8 @@ use ff_utils::ff_utils::{FromBytes, ToBytes};
 use fri::fri::FriProof;
 use fri::poly_utils::{lagrange_interp, multi_inv, sparse};
 use fri::utils::{blake, get_pseudorandom_indices};
+#[allow(unused_imports)]
+use log::{debug, info, warn};
 use num::bigint::BigUint;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -199,7 +201,7 @@ pub fn calc_q1_evaluations<T: PrimeField>(
     let q1_of_x = f0 * (p_of_x - f1 * p_of_prev_x - k_of_x * s_of_x);
     q1_evaluations.push(q1_of_x);
     // if j % skips == 0 {
-    //   println!(
+    //   debug!(
     //     "{:?}, {:?}, {:?}, {:?}",
     //     f0,
     //     f1,
@@ -234,7 +236,7 @@ pub fn calc_q2_evaluations<T: PrimeField>(
     let q2_of_x = f2 * (c_eval - a_eval * b_eval);
     q2_evaluations.push(q2_of_x);
     // if j % skips == 0 {
-    //   println!(
+    //   debug!(
     //     "{:?}, {:?}, {:?}, {:?}",
     //     c_eval - a_eval * b_eval,
     //     f0,
@@ -278,7 +280,7 @@ pub fn get_random_ff_values<T: PrimeField + FromBytes>(
 ) -> Vec<T> {
   let accumulator_randomness =
     get_pseudorandom_indices(seed, modulus, size * 8, exclude_multiples_of);
-  // println!("accumulator_randomness: {:?}", accumulator_randomness);
+  // debug!("accumulator_randomness: {:?}", accumulator_randomness);
   let random_values = accumulator_randomness
     .chunks(8)
     .map(|rand| T::from_bytes_le(&u32_be_bytes_to_u8_be_bytes(rand.try_into().unwrap())).unwrap())
@@ -323,7 +325,7 @@ pub fn calc_a_mini_evaluations<T: PrimeField>(
     a_nmr_evaluations.push(acc_nmr);
     a_dnm_evaluations.push(acc_dnm);
     if val_nmr == T::zero() || val_dnm == T::zero() {
-      println!("value is zero: {:?}", j);
+      info!("value is zero: {:?}", j);
     }
   }
 
@@ -361,7 +363,7 @@ pub fn calc_q3_evaluations<T: PrimeField>(
     let q3_of_x = a_evaluations[j] * val_dnm - a_evaluations[prev_j] * val_nmr;
     q3_evaluations.push(q3_of_x);
     // if j % skips == 0 {
-    //   println!(
+    //   debug!(
     //     "a {:?}, {:?}, {:?}, {:?}",
     //     val_nmr * val_dnm.invert().unwrap(),
     //     a_evaluations[prev_j],
@@ -379,7 +381,7 @@ pub fn calc_d1_polynomial<T: PrimeField>(q1_evaluations: &[T], inv_z_evaluations
   for (pos, (&q, &z)) in q1_evaluations.iter().zip(inv_z_evaluations).enumerate() {
     if z == T::zero() {
       if q != T::zero() {
-        println!("invalid d1: {:?} {:?} {:?}", pos, q, z);
+        warn!("invalid D1: {:?} {:?} {:?}", pos, q, z);
       }
     }
   }
@@ -395,7 +397,7 @@ pub fn calc_d2_polynomial<T: PrimeField>(q2_evaluations: &[T], inv_z_evaluations
   for (pos, (&q, &z)) in q2_evaluations.iter().zip(inv_z_evaluations).enumerate() {
     if z == T::zero() {
       if q != T::zero() {
-        println!("invalid d2: {:?} {:?} {:?}", pos, q, z);
+        warn!("invalid D2: {:?} {:?} {:?}", pos, q, z);
       }
     }
   }
@@ -411,7 +413,7 @@ pub fn calc_d3_polynomial<T: PrimeField>(q3_evaluations: &[T], inv_z_evaluations
   for (pos, (&q, &z)) in q3_evaluations.iter().zip(inv_z_evaluations).enumerate() {
     if z == T::zero() {
       if q != T::zero() {
-        println!("invalid d3: {:?} {:?} {:?}", pos, q, z);
+        warn!("invalid D3: {:?} {:?} {:?}", pos, q, z);
       }
     }
   }
@@ -492,7 +494,7 @@ pub fn calc_b2_evaluations<T: PrimeField>(
   {
     if zb2 == T::zero() {
       if s != i2 {
-        println!("pos: {:?} {:?} {:?}", pos, s, i2);
+        warn!("invalid B2: {:?} {:?} {:?}", pos, s, i2);
       }
     }
   }
@@ -519,7 +521,7 @@ pub fn calc_b3_evaluations<T: PrimeField>(
   {
     if zb3 == T::zero() {
       if a != i3 {
-        println!("pos: {:?} {:?} {:?}", pos, a, i3);
+        warn!("invalid B3: {:?} {:?} {:?}", pos, a, i3);
       }
     }
   }
