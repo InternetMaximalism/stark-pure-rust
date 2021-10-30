@@ -327,9 +327,9 @@ pub fn inv_parallel_fft<T: PrimeField>(
 pub fn best_fft<T: PrimeField>(
   coefficients: Vec<T>,
   root_of_unity: &T,
-  worker: &Worker,
   log_order_of_root: u32,
 ) -> Vec<T> {
+  let worker = Worker::new();
   let mut evaluations = coefficients;
   let order_of_root = 1 << log_order_of_root;
   if evaluations.len() < order_of_root {
@@ -343,7 +343,7 @@ pub fn best_fft<T: PrimeField>(
   if cpus == 1 || order_of_root <= cpus {
     serial_fft(&mut evaluations, root_of_unity, log_order_of_root);
   } else {
-    parallel_fft(&mut evaluations, root_of_unity, worker, log_order_of_root);
+    parallel_fft(&mut evaluations, root_of_unity, &worker, log_order_of_root);
   }
 
   let end: std::time::Duration = start.elapsed();
@@ -359,9 +359,9 @@ pub fn best_fft<T: PrimeField>(
 pub fn inv_best_fft<T: PrimeField>(
   evaluations: Vec<T>,
   root_of_unity: &T,
-  worker: &Worker,
   log_order_of_root: u32,
 ) -> Vec<T> {
+  let worker = Worker::new();
   let mut coefficients = evaluations;
   let order_of_root = 1 << log_order_of_root;
   if coefficients.len() < order_of_root {
@@ -373,7 +373,7 @@ pub fn inv_best_fft<T: PrimeField>(
   if cpus == 1 || order_of_root <= cpus {
     inv_serial_fft(&mut coefficients, root_of_unity, log_order_of_root);
   } else {
-    inv_parallel_fft(&mut coefficients, root_of_unity, worker, log_order_of_root);
+    inv_parallel_fft(&mut coefficients, root_of_unity, &worker, log_order_of_root);
   }
   coefficients
 }

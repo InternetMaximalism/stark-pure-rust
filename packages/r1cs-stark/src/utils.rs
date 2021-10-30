@@ -1,6 +1,6 @@
-use commitment::delayed::Delayed;
-use commitment::merkle_tree::{gen_multi_proofs_multi_core, BlakeDigest, Digest, Proof};
-use commitment::multicore::Worker;
+use commitment::hash::Digest;
+use commitment::merkle_proof_in_place::MerkleProofInPlace;
+use commitment::merkle_tree::{MerkleTree, Proof};
 use ff::PrimeField;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
 use fri::fri::FriProof;
@@ -121,13 +121,13 @@ pub fn r1cs_computational_trace<T: PrimeField>(coefficients: &[T], witness: &[T]
 // }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct StarkProof {
-  pub m_root: BlakeDigest,
-  pub l_root: BlakeDigest,
-  pub a_root: BlakeDigest,
-  pub main_branches: Vec<Proof<Vec<u8>, BlakeDigest>>,
-  pub linear_comb_branches: Vec<Proof<Vec<u8>, BlakeDigest>>,
-  pub fri_proof: Vec<FriProof>,
+pub struct StarkProof<H: Digest> {
+  pub m_root: H,
+  pub l_root: H,
+  pub a_root: H,
+  pub main_branches: Vec<Proof<Vec<u8>, H>>,
+  pub linear_comb_branches: Vec<Proof<Vec<u8>, H>>,
+  pub fri_proof: Vec<FriProof<H>>,
 }
 
 // const modulus = 2**256 - 2**32 * 351 + 1;
@@ -252,22 +252,22 @@ pub fn calc_q2_evaluations<T: PrimeField>(
 pub fn get_accumulator_tree_root<T: PrimeField + ToBytes, H: Digest>(
   permuted_indices: &[usize],
   witness_trace: &[T],
-  worker: &Worker,
 ) -> H {
   let accumulator_str = permuted_indices
     .iter()
     .zip(witness_trace)
     .map(|(&p_val, &a_val)| {
-      Delayed::new(move || {
-        let mut res = vec![];
-        res.extend(p_val.to_le_bytes());
-        res.extend(a_val.to_bytes_le().unwrap());
-        res
-      })
+      let mut res = vec![];
+      res.extend(p_val.to_le_bytes());
+      res.extend(a_val.to_bytes_le().unwrap());
+      res
     })
     .collect::<Vec<_>>();
 
-  let (_, a_root) = gen_multi_proofs_multi_core::<Vec<u8>, H>(&accumulator_str, &[], worker);
+  let mut a_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
+  a_tree.update(accumulator_str);
+  a_tree.gen_proofs(&[]);
+  let a_root = a_tree.get_root().unwrap();
 
   a_root
 }
