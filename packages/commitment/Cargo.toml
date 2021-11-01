@@ -7,6 +7,10 @@ edition = "2018"
 
 [dependencies]
 blake2 = "0.9.1"
+neptune = "5.1.0"
+generic-array = "0.14.4"
+lazy_static = "1.4.0"
+blstrs = "0.4.1"
 hex = "0.4.3"
 serde = { version = "^1.0.101", features = ["derive"] }
 futures = {package = "futures", version = "0.3", default_features = false, features = ["executor", "thread-pool"]}

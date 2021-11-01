@@ -21,12 +21,12 @@ impl AsRef<[u8]> for BlakeDigest {
 
 impl Default for BlakeDigest {
   fn default() -> Self {
-    BlakeDigest(vec![])
+    Self(vec![])
   }
 }
 
 impl Digest for BlakeDigest {
   fn hash(message: &[u8]) -> Self {
-    BlakeDigest(blake(message))
+    Self(blake(message))
   }
 }

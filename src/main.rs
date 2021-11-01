@@ -1,5 +1,5 @@
+use commitment::blake::BlakeDigest;
 use r1cs_stark::run::run_with_file_path;
-use stark_pure_rust::blake::BlakeDigest;
 
 fn main() {
   let mut args = std::env::args().skip(1);

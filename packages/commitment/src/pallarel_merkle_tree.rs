@@ -135,7 +135,7 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for ParallelMerkleTree<E, H> {
 }
 
 #[test]
-fn test_parallel_single_proof() {
+fn test_parallel_single_proof_blake() {
   use crate::blake::BlakeDigest;
 
   let index = 2;
@@ -162,39 +162,29 @@ fn test_parallel_single_proof() {
   merkle_tree.update(leaves);
   let merkle_root = merkle_tree.get_root().unwrap();
   assert_eq!(
-    merkle_root,
-    BlakeDigest(
-      hex::decode("9f04496db6a8c505e88a7db289161a540a0cb953ef81c9b86103f0d6d12e8e15").unwrap()
-    )
+    hex::encode(merkle_root.clone()),
+    "9f04496db6a8c505e88a7db289161a540a0cb953ef81c9b86103f0d6d12e8e15"
   );
   let proof = merkle_tree.gen_proof(index);
   assert_eq!(proof.leaf, hex::decode("00000003").unwrap());
   assert_eq!(
-    proof.nodes,
+    proof.nodes.iter().map(hex::encode).collect::<Vec<_>>(),
     [
-      BlakeDigest(
-        hex::decode("4cd90cc0d54239ee5b3fd9989b4ef4cbebbbdd08410758cbd2d291fa364c82d5").unwrap()
-      ),
-      BlakeDigest(
-        hex::decode("2e3d3579213e0a992d60b503f1d8fe331b8bd548e227e8dbd741ca1752077b84").unwrap()
-      ),
-      BlakeDigest(
-        hex::decode("9a8c87bb98f1b2e0f7036a27a343dc8fd649bedc737093c2080a34c6b9f6f375").unwrap()
-      ),
-      BlakeDigest(
-        hex::decode("ef459d75e20ce2f3fc4378ff20fe2d594fbcf16cccd986c2e0d3df41bd3bbe44").unwrap()
-      )
+      "4cd90cc0d54239ee5b3fd9989b4ef4cbebbbdd08410758cbd2d291fa364c82d5",
+      "2e3d3579213e0a992d60b503f1d8fe331b8bd548e227e8dbd741ca1752077b84",
+      "9a8c87bb98f1b2e0f7036a27a343dc8fd649bedc737093c2080a34c6b9f6f375",
+      "ef459d75e20ce2f3fc4378ff20fe2d594fbcf16cccd986c2e0d3df41bd3bbe44"
     ]
   );
 
   assert_eq!(
-    proof.validate(&merkle_root, index),
-    Ok(hex::decode("00000003").unwrap())
+    proof.validate(&merkle_root, index).unwrap(),
+    hex::decode("00000003").unwrap()
   );
 }
 
 #[test]
-fn test_parallel_multi_proof() {
+fn test_parallel_multi_proof_blake() {
   use crate::blake::BlakeDigest;
   use crate::merkle_tree::verify_multi_branch;
 
@@ -202,26 +192,67 @@ fn test_parallel_multi_proof() {
   let leaves: Vec<Vec<u8>> = vec![hex::decode("7fffffff").unwrap(); 1 << 12];
   println!("generate Merkle tree");
 
+  let start = std::time::Instant::now();
+
   let mut merkle_tree: ParallelMerkleTree<Vec<u8>, BlakeDigest> = ParallelMerkleTree::new();
   merkle_tree.update(leaves);
   let merkle_root = merkle_tree.get_root().unwrap();
   assert_eq!(
-    merkle_root,
-    BlakeDigest(
-      hex::decode("a0d91c3115f9e4d9f142e7cb2f413c10f0f2f9f65d9f918b80f852f9ebc06ebc").unwrap()
-    )
+    hex::encode(merkle_root.clone()),
+    "a0d91c3115f9e4d9f142e7cb2f413c10f0f2f9f65d9f918b80f852f9ebc06ebc"
   );
 
   println!("generate Merkle proof");
   let proofs = merkle_tree.gen_proofs(&indices);
   assert_eq!(proofs[0].leaf, hex::decode("7fffffff").unwrap());
   assert_eq!(
-    proofs[0].nodes[0],
-    BlakeDigest(
-      hex::decode("b72b5371ceffa4e01aa1849cdb8705406e14791db359f826bc01a392ed26b6b9").unwrap()
-    )
+    hex::encode(proofs[0].nodes[0].clone()),
+    "b72b5371ceffa4e01aa1849cdb8705406e14791db359f826bc01a392ed26b6b9"
   );
 
   verify_multi_branch(&merkle_root, &indices, proofs).unwrap();
-  // assert_eq!(Ok(vec![0, 0, 0, 3]));
+
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "test_parallel_multi_proof_blake: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
+}
+
+#[test]
+fn test_parallel_multi_proof_poseidon() {
+  use crate::merkle_tree::verify_multi_branch;
+  use crate::poseidon::PoseidonDigest;
+
+  let indices = [2, 7, 13];
+  let leaves: Vec<Vec<u8>> = vec![hex::decode("7fffffff").unwrap(); 1 << 12];
+  println!("generate Merkle tree");
+
+  let start = std::time::Instant::now();
+
+  let mut merkle_tree: ParallelMerkleTree<Vec<u8>, PoseidonDigest> = ParallelMerkleTree::new();
+  merkle_tree.update(leaves);
+  let merkle_root = merkle_tree.get_root().unwrap();
+  assert_eq!(
+    hex::encode(merkle_root.clone()),
+    "eb8c29b94499d3611046c2943259df7044586ba12e76042ca11bbeef87d36a33"
+  );
+
+  println!("generate Merkle proof");
+  let proofs = merkle_tree.gen_proofs(&indices);
+  assert_eq!(proofs[0].leaf, hex::decode("7fffffff").unwrap());
+  assert_eq!(
+    hex::encode(proofs[0].nodes[0].clone()),
+    "1eb8b5a9268d3f98b1e46287080e65191798f6a2f098bd31d2eadf86a22e8647"
+  );
+
+  verify_multi_branch(&merkle_root, &indices, proofs).unwrap();
+
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "test_parallel_multi_proof_poseidon: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
 }
