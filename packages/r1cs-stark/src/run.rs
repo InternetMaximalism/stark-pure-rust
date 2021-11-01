@@ -4,13 +4,16 @@ use crate::reader::{
 };
 use crate::utils::*;
 use crate::verify::verify_r1cs_proof;
+
 use circom2bellman_core::Constraint;
+use commitment::hash::Digest;
 use ff::{Field, PrimeField};
 use ff_utils::ff_utils::FromBytes;
 use ff_utils::fp::Fp;
 #[allow(unused_imports)]
 use log::{debug, info};
 use num::BigUint;
+use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::fs::File;
 use std::io::Error;
@@ -306,7 +309,10 @@ fn calc_flags<T: PrimeField>(
   (flag0, flag1, flag2)
 }
 
-pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<StarkProof, Error> {
+pub fn prove_with_witness<H: Digest>(
+  r1cs: &R1csContents,
+  witness: &[Vec<u8>],
+) -> Result<StarkProof<H>, Error> {
   let Header {
     field_size: _,
     prime_number,
@@ -431,7 +437,7 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
   // )
   // .unwrap();
 
-  mk_r1cs_proof(
+  mk_r1cs_proof::<TargetFF, H>(
     &witness_trace,
     &computational_trace,
     &public_wires,
@@ -446,10 +452,10 @@ pub fn prove_with_witness(r1cs: &R1csContents, witness: &[Vec<u8>]) -> Result<St
   )
 }
 
-fn verify_with_witness(
+fn verify_with_witness<H: Digest>(
   r1cs: &R1csContents,
   public_wires: &[Vec<u8>],
-  proof: StarkProof,
+  proof: StarkProof<H>,
 ) -> Result<bool, Error> {
   let Header {
     field_size: _,
@@ -520,7 +526,12 @@ fn verify_with_witness(
   )
 }
 
-pub fn prove_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
+pub fn prove_with_file_path<
+  P: AsRef<Path>,
+  Q: AsRef<Path>,
+  R: AsRef<Path>,
+  H: Digest + Serialize,
+>(
   r1cs_file_path: P,
   witness_file_path: Q,
   proof_json_path: R,
@@ -535,7 +546,7 @@ pub fn prove_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
   BufReader::new(witness_file).read_to_end(&mut raw_witness)?;
   let witness = read_witness(&raw_witness);
 
-  let proof = prove_with_witness(&r1cs, &witness)?;
+  let proof = prove_with_witness::<H>(&r1cs, &witness)?;
   let serialized_proof = serde_json::to_string(&proof)?;
   let mut file = File::create(proof_json_path)?;
   write!(file, "{}", serialized_proof)?;
@@ -543,7 +554,12 @@ pub fn prove_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
   Ok(())
 }
 
-pub fn verify_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
+pub fn verify_with_file_path<
+  P: AsRef<Path>,
+  Q: AsRef<Path>,
+  R: AsRef<Path>,
+  H: Digest + for<'a> Deserialize<'a>,
+>(
   r1cs_file_path: P,
   witness_file_path: Q,
   proof_json_path: R,
@@ -560,7 +576,7 @@ pub fn verify_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
 
   let proof_file = File::open(proof_json_path)?;
   let proof_reader = BufReader::new(proof_file);
-  let proof: StarkProof = serde_json::from_reader(proof_reader)?;
+  let proof: StarkProof<H> = serde_json::from_reader(proof_reader)?;
 
   // TODO: Use public_wires instead of witness.
   let public_wires = witness
@@ -572,7 +588,7 @@ pub fn verify_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
   Ok(())
 }
 
-pub fn run_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
+pub fn run_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>, H: Digest + Serialize>(
   r1cs_file_path: P,
   witness_file_path: Q,
   proof_json_path: R,
@@ -595,7 +611,7 @@ pub fn run_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
   let mut wtns_json_file = File::create(wtns_json_file_path)?;
   write!(wtns_json_file, "{:?}", witness_ff)?;
 
-  let proof = prove_with_witness(&r1cs, &witness)?;
+  let proof = prove_with_witness::<H>(&r1cs, &witness)?;
   let serialized_proof = serde_json::to_string(&proof)?;
   let mut file = File::create(proof_json_path)?;
   write!(file, "{}", serialized_proof)?;
@@ -611,33 +627,46 @@ pub fn run_with_file_path<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
 
 #[test]
 fn test_prove_and_verify_with_file_path() {
+  use commitment::blake::BlakeDigest;
+
   let r1cs_file_path = "./tests/compute.r1cs";
   let witness_file_path = "./tests/compute.wtns";
   let proof_json_path = "./tests/compute_proof.json";
-  prove_with_file_path(r1cs_file_path, witness_file_path, proof_json_path).unwrap();
-  verify_with_file_path(r1cs_file_path, witness_file_path, proof_json_path).unwrap();
+  prove_with_file_path::<_, _, _, BlakeDigest>(r1cs_file_path, witness_file_path, proof_json_path)
+    .unwrap();
+  verify_with_file_path::<_, _, _, BlakeDigest>(r1cs_file_path, witness_file_path, proof_json_path)
+    .unwrap();
 }
 
 #[test]
 fn test_run_compute_with_file_path() {
+  use commitment::blake::BlakeDigest;
+
   let r1cs_file_path = "./tests/compute.r1cs";
   let witness_file_path = "./tests/compute.wtns";
   let proof_json_path = "./tests/compute_proof.json";
-  run_with_file_path(r1cs_file_path, witness_file_path, proof_json_path).unwrap();
+  run_with_file_path::<_, _, _, BlakeDigest>(r1cs_file_path, witness_file_path, proof_json_path)
+    .unwrap();
 }
 
 #[test]
 fn test_run_pedersen_with_file_path() {
+  use commitment::blake::BlakeDigest;
+
   let r1cs_file_path = "./tests/pedersen_test.r1cs";
   let witness_file_path = "./tests/pedersen_test.wtns";
   let proof_json_path = "./tests/pedersen_test_proof.json";
-  run_with_file_path(r1cs_file_path, witness_file_path, proof_json_path).unwrap();
+  run_with_file_path::<_, _, _, BlakeDigest>(r1cs_file_path, witness_file_path, proof_json_path)
+    .unwrap();
 }
 
 #[test]
 fn test_run_poseidon_with_file_path() {
+  use commitment::blake::BlakeDigest;
+
   let r1cs_file_path = "./tests/poseidon3_test.r1cs";
   let witness_file_path = "./tests/poseidon3_test.wtns";
   let proof_json_path = "./tests/poseidon3_test_proof.json";
-  run_with_file_path(r1cs_file_path, witness_file_path, proof_json_path).unwrap();
+  run_with_file_path::<_, _, _, BlakeDigest>(r1cs_file_path, witness_file_path, proof_json_path)
+    .unwrap();
 }

@@ -1,4 +1,10 @@
+pub mod blake;
 pub mod delayed;
+pub mod hash;
+pub mod merkle_proof_in_place;
 pub mod merkle_tree;
 pub mod multicore;
+pub mod pallarel_merkle_tree;
+pub mod poseidon;
+pub mod serial_merkle_tree;
 pub mod utils;

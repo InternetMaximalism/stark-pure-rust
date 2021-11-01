@@ -1,6 +1,6 @@
 use crate::utils::*;
+use commitment::hash::Digest;
 use commitment::merkle_tree::verify_multi_branch;
-use commitment::multicore::Worker;
 use ff::PrimeField;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
 use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
@@ -12,8 +12,8 @@ use log::{debug, info};
 use num::bigint::BigUint;
 use std::io::Error;
 
-pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
-  proof: StarkProof,
+pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
+  proof: StarkProof<H>,
   public_wires: &[T],
   public_first_indices: &[(usize, usize)],
   permuted_indices: &[usize],
@@ -71,14 +71,13 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // Interpolate the computational trace into a polynomial P, with each step
   // along a successive power of g1
   println!("calculate expanding polynomials");
-  let worker = Worker::new();
 
-  let k_polynomial = inv_best_fft(coefficients, &g1, &worker, log_order_of_g1);
+  let k_polynomial = inv_best_fft(coefficients, &g1, log_order_of_g1);
   println!("Converted coefficients into a polynomial and low-degree extended it");
 
-  let f0_polynomial = inv_best_fft(flag0.to_vec(), &g1, &worker, log_order_of_g1);
-  let f1_polynomial = inv_best_fft(flag1.to_vec(), &g1, &worker, log_order_of_g1);
-  let f2_polynomial = inv_best_fft(flag2.to_vec(), &g1, &worker, log_order_of_g1);
+  let f0_polynomial = inv_best_fft(flag0.to_vec(), &g1, log_order_of_g1);
+  let f1_polynomial = inv_best_fft(flag1.to_vec(), &g1, log_order_of_g1);
+  let f2_polynomial = inv_best_fft(flag2.to_vec(), &g1, log_order_of_g1);
   println!("Converted flags into a polynomial and low-degree extended it");
 
   // Verifies the low-degree proofs
@@ -121,19 +120,19 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     verify_multi_branch(&l_root, &positions, linear_comb_branches).unwrap();
 
   let z_polynomial = calc_z_polynomial(steps);
-  let z_evaluations = best_fft(z_polynomial, &g2, &worker, log_order_of_g2);
+  let z_evaluations = best_fft(z_polynomial, &g2, log_order_of_g2);
 
   // let z3_polynomial = calc_z_polynomial(steps);
-  // let z3_evaluations = best_fft(z3_polynomial, &g2, &worker, log_order_of_g2);
+  // let z3_evaluations = best_fft(z3_polynomial, &g2, log_order_of_g2);
 
   let converted_indices = convert_usize_iter_to_ff_vec(0..steps);
-  let index_polynomial = inv_best_fft(converted_indices, &g1, &worker, log_order_of_g1);
-  let ext_indices = best_fft(index_polynomial, &g2, &worker, log_order_of_g2);
+  let index_polynomial = inv_best_fft(converted_indices, &g1, log_order_of_g1);
+  let ext_indices = best_fft(index_polynomial, &g2, log_order_of_g2);
   println!("Computed extended index polynomial");
 
   let converted_permuted_indices = convert_usize_iter_to_ff_vec(permuted_indices.clone());
-  let permuted_polynomial = inv_best_fft(converted_permuted_indices, &g1, &worker, log_order_of_g1);
-  let ext_permuted_indices = best_fft(permuted_polynomial, &g2, &worker, log_order_of_g2);
+  let permuted_polynomial = inv_best_fft(converted_permuted_indices, &g1, log_order_of_g1);
+  let ext_permuted_indices = best_fft(permuted_polynomial, &g2, log_order_of_g2);
   // println!("ext_permuted_indices: {:?}", ext_permuted_indices);
   println!("Computed extended permuted index polynomial");
 

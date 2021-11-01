@@ -1,8 +1,7 @@
 use crate::utils::*;
-use commitment::delayed::Delayed;
-use commitment::lazily;
-use commitment::merkle_tree::{gen_multi_proofs_multi_core, BlakeDigest};
-use commitment::multicore::Worker;
+use commitment::hash::Digest;
+use commitment::merkle_proof_in_place::MerkleProofInPlace;
+use commitment::merkle_tree::MerkleTree;
 use ff::PrimeField;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
 use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
@@ -14,7 +13,7 @@ use log::{debug, info};
 use num::bigint::BigUint;
 use std::io::Error;
 
-pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
+pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
   witness_trace: &[T],
   computational_trace: &[T],
   public_wires: &[T],
@@ -26,7 +25,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   flag2: &[T],
   n_constraints: usize,
   n_wires: usize,
-) -> Result<StarkProof, Error> {
+) -> Result<StarkProof<H>, Error> {
   // println!("n_cons: {:?}", n_constraints);
   // println!("n_wires: {:?}", n_wires);
   // println!("n_public_wires: {:?}", public_wires.len());
@@ -99,38 +98,37 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   // Interpolate the computational trace into a polynomial P, with each step
   // along a successive power of g1
   println!("calculate expanding polynomials");
-  let worker = Worker::new();
 
-  let k_polynomial = inv_best_fft(coefficients, &g1, &worker, log_order_of_g1); // K(X)
-  let k_evaluations = best_fft(k_polynomial, &g2, &worker, log_order_of_g2);
+  let k_polynomial = inv_best_fft(coefficients, &g1, log_order_of_g1); // K(X)
+  let k_evaluations = best_fft(k_polynomial, &g2, log_order_of_g2);
   // println!("k: {:?}", k_evaluations);
   println!("Converted coefficients into a polynomial and low-degree extended it");
 
-  let f0_polynomial = inv_best_fft(flag0.to_vec(), &g1, &worker, log_order_of_g1);
-  let f0_evaluations = best_fft(f0_polynomial.clone(), &g2, &worker, log_order_of_g2);
+  let f0_polynomial = inv_best_fft(flag0.to_vec(), &g1, log_order_of_g1);
+  let f0_evaluations = best_fft(f0_polynomial.clone(), &g2, log_order_of_g2);
   // println!("f0_evaluations: {:?}", f0_evaluations);
 
-  let f1_polynomial = inv_best_fft(flag1.to_vec(), &g1, &worker, log_order_of_g1);
-  let f1_evaluations = best_fft(f1_polynomial, &g2, &worker, log_order_of_g2);
+  let f1_polynomial = inv_best_fft(flag1.to_vec(), &g1, log_order_of_g1);
+  let f1_evaluations = best_fft(f1_polynomial, &g2, log_order_of_g2);
   // println!("f1_evaluations: {:?}", f1_evaluations);
 
-  let f2_polynomial = inv_best_fft(flag2.to_vec(), &g1, &worker, log_order_of_g1);
-  let f2_evaluations = best_fft(f2_polynomial, &g2, &worker, log_order_of_g2);
+  let f2_polynomial = inv_best_fft(flag2.to_vec(), &g1, log_order_of_g1);
+  let f2_evaluations = best_fft(f2_polynomial, &g2, log_order_of_g2);
   // println!("f2_evaluations: {:?}", f2_evaluations);
   println!("Converted flags into a polynomial and low-degree extended it");
 
-  let s_polynomial = inv_best_fft(witness_trace.clone(), &g1, &worker, log_order_of_g1); // S(X)
-  let s_evaluations = best_fft(s_polynomial, &g2, &worker, log_order_of_g2);
+  let s_polynomial = inv_best_fft(witness_trace.clone(), &g1, log_order_of_g1); // S(X)
+  let s_evaluations = best_fft(s_polynomial, &g2, log_order_of_g2);
   // println!("s_evaluations: {:?}", s_evaluations);
   println!("Converted witness trace into a polynomial and low-degree extended it");
 
-  let p_polynomial = inv_best_fft(computational_trace, &g1, &worker, log_order_of_g1); // P(X)
-  let p_evaluations = best_fft(p_polynomial, &g2, &worker, log_order_of_g2);
+  let p_polynomial = inv_best_fft(computational_trace, &g1, log_order_of_g1); // P(X)
+  let p_evaluations = best_fft(p_polynomial, &g2, log_order_of_g2);
   // println!("p_evaluations: {:?}", p_evaluations);
   println!("Converted computational trace into a polynomial and low-degree extended it");
 
   let z_polynomial = calc_z_polynomial(steps);
-  let z_evaluations = best_fft(z_polynomial, &g2, &worker, log_order_of_g2);
+  let z_evaluations = best_fft(z_polynomial, &g2, log_order_of_g2);
   // println!("z_evaluations: {:?}", z_evaluations);
   println!("Computed Z polynomial");
 
@@ -162,17 +160,17 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   //   .map(|v| T::from_bytes_le(v.to_le_bytes().as_ref()).unwrap())
   //   .collect::<Vec<_>>();
   let converted_indices = convert_usize_iter_to_ff_vec(0..steps);
-  let index_polynomial = inv_best_fft(converted_indices, &g1, &worker, log_order_of_g1);
-  let ext_indices = best_fft(index_polynomial, &g2, &worker, log_order_of_g2);
+  let index_polynomial = inv_best_fft(converted_indices, &g1, log_order_of_g1);
+  let ext_indices = best_fft(index_polynomial, &g2, log_order_of_g2);
   println!("Computed extended index polynomial");
 
   let converted_permuted_indices = convert_usize_iter_to_ff_vec(permuted_indices.clone());
-  let permuted_polynomial = inv_best_fft(converted_permuted_indices, &g1, &worker, log_order_of_g1);
-  let ext_permuted_indices = best_fft(permuted_polynomial, &g2, &worker, log_order_of_g2);
+  let permuted_polynomial = inv_best_fft(converted_permuted_indices, &g1, log_order_of_g1);
+  let ext_permuted_indices = best_fft(permuted_polynomial, &g2, log_order_of_g2);
   // println!("ext_permuted_indices: {:?}", ext_permuted_indices);
   println!("Computed extended permuted index polynomial");
 
-  let a_root: BlakeDigest = get_accumulator_tree_root(&permuted_indices, &witness_trace, &worker);
+  let a_root: H = get_accumulator_tree_root(&permuted_indices, &witness_trace);
   let r: Vec<T> = get_random_ff_values(a_root.as_ref(), precision as u32, 3, 0);
   // println!("r: {:?}", r);
 
@@ -184,12 +182,12 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     steps,
     skips,
   );
-  let a_polynomials = inv_best_fft(a_mini_evaluations, &g1, &worker, log_order_of_g1);
-  let a_evaluations = best_fft(a_polynomials, &g2, &worker, log_order_of_g2);
+  let a_polynomials = inv_best_fft(a_mini_evaluations, &g1, log_order_of_g1);
+  let a_evaluations = best_fft(a_polynomials, &g2, log_order_of_g2);
   println!("Computed A polynomial");
 
   // let z3_polynomial = calc_z_polynomial(steps);
-  // let z3_evaluations = best_fft(z3_polynomial, &g2, &worker, log_order_of_g2);
+  // let z3_evaluations = best_fft(z3_polynomial, &g2, log_order_of_g2);
   // println!("z3_evaluations: {:?}", z3_evaluations);
   // println!("Computed Z3 polynomial");
 
@@ -247,25 +245,25 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
     .zip(&b3_evaluations)
     .map(
       |(((((((&p_val, &a_val), &s_val), &d1_val), &d2_val), &d3_val), &b_val), &b3_val)| {
-        lazily!(
-          let mut res = vec![];
-          res.extend(p_val.to_bytes_le().unwrap());
-          res.extend(a_val.to_bytes_le().unwrap());
-          res.extend(s_val.to_bytes_le().unwrap());
-          res.extend(d1_val.to_bytes_le().unwrap());
-          res.extend(d2_val.to_bytes_le().unwrap());
-          res.extend(d3_val.to_bytes_le().unwrap());
-          res.extend(b_val.to_bytes_le().unwrap());
-          res.extend(b3_val.to_bytes_le().unwrap());
-          res
-        )
+        let mut res = vec![];
+        res.extend(p_val.to_bytes_le().unwrap());
+        res.extend(a_val.to_bytes_le().unwrap());
+        res.extend(s_val.to_bytes_le().unwrap());
+        res.extend(d1_val.to_bytes_le().unwrap());
+        res.extend(d2_val.to_bytes_le().unwrap());
+        res.extend(d3_val.to_bytes_le().unwrap());
+        res.extend(b_val.to_bytes_le().unwrap());
+        res.extend(b3_val.to_bytes_le().unwrap());
+        res
       },
     )
     .collect::<Vec<_>>();
   println!("Compute Merkle tree for the plain evaluations");
 
-  let (_, m_root) =
-    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&poly_evaluations_str, &[], &worker);
+  let mut m_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
+  m_tree.update(poly_evaluations_str);
+  m_tree.gen_proofs(&[]);
+  let m_root = m_tree.get_root().unwrap();
   println!("Computed Merkle root for the plain evaluations");
 
   // Based on the hashes of P, D and B, we select a random linear combination
@@ -327,11 +325,13 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
 
   let l_evaluations_str = l_evaluations
     .iter()
-    .map(|x| lazily!(x.to_bytes_le().unwrap()))
+    .map(|x| x.to_bytes_le().unwrap())
     .collect::<Vec<_>>();
 
-  let (_, l_root) =
-    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&l_evaluations_str, &[], &worker);
+  let mut l_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
+  l_tree.update(l_evaluations_str);
+  l_tree.gen_proofs(&[]);
+  let l_root = l_tree.get_root().unwrap();
   println!("Computed Merkle root for the linear combination of evaluations");
 
   // Do some spot checks of the Merkle tree at pseudo-random coordinates,
@@ -347,8 +347,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   .collect::<Vec<usize>>();
   // println!("positions: {:?}", positions);
 
-  let (linear_comb_branches, _) =
-    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&l_evaluations_str, &positions, &worker);
+  let linear_comb_branches = l_tree.gen_proofs(&positions);
   println!("Computed Merkle branch for the linear combination of evaluations");
 
   let mut augmented_positions = vec![];
@@ -362,16 +361,12 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes>(
   }
   // println!("augmented_positions: {:?}", augmented_positions);
 
-  let (main_branches, _) = gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(
-    &poly_evaluations_str,
-    &augmented_positions,
-    &worker,
-  );
+  let main_branches = m_tree.gen_proofs(&augmented_positions);
   println!("Computed Merkle branch for the plain evaluations");
 
   // Return the Merkle roots of P and D, the spot check Merkle proofs,
   // and low-degree proofs of P and D
-  let fri_proof = prove_low_degree::<T>(&l_evaluations, g2, precision / 4, skips as u32);
+  let fri_proof = prove_low_degree::<T, H>(&l_evaluations, g2, precision / 4, skips as u32);
   println!("Computed {} spot checks", SPOT_CHECK_SECURITY_FACTOR);
 
   Ok(StarkProof {

@@ -1,4 +1,4 @@
-use blake2::{Blake2s, Digest};
+use blake2::*;
 use std::cmp::min;
 use std::convert::TryInto;
 

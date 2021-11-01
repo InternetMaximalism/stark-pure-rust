@@ -1,39 +1,36 @@
-use ff::PrimeField;
-use std::convert::TryInto;
-// use simple_error::SimpleError;
 use crate::fft::expand_root_of_unity;
-use commitment::delayed::Delayed;
-use commitment::lazily;
-use commitment::merkle_tree::{
-  gen_multi_proofs_multi_core, verify_multi_branch, BlakeDigest, Proof,
-};
-use commitment::multicore::Worker;
-use ff_utils::ff_utils::{FromBytes, ToBytes};
-// use crate::permuted_tree::{bin_length, get_root, merklize, mk_multi_branch, verify_multi_branch};
 use crate::poly_utils::{eval_poly_at, eval_quartic, lagrange_interp, multi_interp_4};
 use crate::utils::get_pseudorandom_indices;
+
+use commitment::hash::Digest;
+use commitment::merkle_proof_in_place::MerkleProofInPlace;
+use commitment::merkle_tree::{verify_multi_branch, MerkleTree, Proof};
+use commitment::multicore::Worker;
+use ff::PrimeField;
+use ff_utils::ff_utils::{FromBytes, ToBytes};
 use serde::{Deserialize, Serialize};
+use std::convert::TryInto;
 
 const MIN_DEG_DIRECT_CHECKING: usize = 16;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum FriProof {
+pub enum FriProof<H: Digest> {
   Last {
     last: Vec<Vec<u8>>,
   },
   Middle {
-    root2: BlakeDigest,
-    column_branches: Vec<Proof<Vec<u8>, BlakeDigest>>,
-    poly_branches: Vec<Proof<Vec<u8>, BlakeDigest>>,
+    root2: H,
+    column_branches: Vec<Proof<Vec<u8>, H>>,
+    poly_branches: Vec<Proof<Vec<u8>, H>>,
   },
 }
 
-pub fn prove_low_degree_directly<T: PrimeField + FromBytes + ToBytes>(
+pub fn prove_low_degree_directly<T: PrimeField + FromBytes + ToBytes, H: Digest>(
   values: &[T],
   root_of_unity: T,
   max_deg_plus_1: usize,
   exclude_multiples_of: u32,
-) -> Vec<FriProof> {
+) -> Vec<FriProof<H>> {
   let worker = Worker::new();
   prove_low_degree_rec(
     vec![],
@@ -46,12 +43,12 @@ pub fn prove_low_degree_directly<T: PrimeField + FromBytes + ToBytes>(
   )
 }
 
-pub fn prove_low_degree<T: PrimeField + FromBytes + ToBytes>(
+pub fn prove_low_degree<T: PrimeField + FromBytes + ToBytes, H: Digest>(
   values: &[T],
   root_of_unity: T,
   max_deg_plus_1: usize,
   exclude_multiples_of: u32,
-) -> Vec<FriProof> {
+) -> Vec<FriProof<H>> {
   let worker = Worker::new();
   prove_low_degree_rec(
     vec![],
@@ -64,15 +61,15 @@ pub fn prove_low_degree<T: PrimeField + FromBytes + ToBytes>(
   )
 }
 
-fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
-  mut acc: Vec<FriProof>,
+fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes, H: Digest>(
+  mut acc: Vec<FriProof<H>>,
   worker: Worker,
   values: &[T],
   root_of_unity: T,
   max_deg_plus_1: usize,
   deg_direct_checking: usize,
   exclude_multiples_of: u32,
-) -> Vec<FriProof> {
+) -> Vec<FriProof<H>> {
   println!(
     "Proving {} values are degree <= {}",
     values.len(),
@@ -122,14 +119,16 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   // proof will be checked against
   let encoded_values = values
     .iter()
-    .map(|x| lazily!(x.to_bytes_le().unwrap()))
+    .map(|x| x.to_bytes_le().unwrap())
     .collect::<Vec<_>>();
   // let m = merklize(&encoded_values);
-  // let mut m: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+  // let mut m: PermutedParallelMerkleTree<Vec<u8>, H> =
   //   PermutedParallelMerkleTree::new(&worker);
   // m.update(encoded_values.collect::<Vec<Vec<u8>>>());
-  let (_, m_root) =
-    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&encoded_values, &[], &worker);
+  let mut m_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
+  m_tree.update(encoded_values);
+  m_tree.gen_proofs(&[]);
+  let m_root = m_tree.get_root().unwrap();
 
   // Select a pseudo-random x coordinate
   // let m_root = m.root().unwrap();
@@ -165,11 +164,13 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     .collect();
   let encoded_column = column
     .iter()
-    .map(|p| lazily!(p.to_bytes_le().unwrap()))
+    .map(|p| p.to_bytes_le().unwrap())
     .collect::<Vec<_>>();
-  let (_, m2_root) =
-    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&encoded_column, &[], &worker);
-  // let mut m2_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+  let mut m2_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
+  m2_tree.update(encoded_column);
+  m2_tree.gen_proofs(&[]);
+  let m2_root = m2_tree.get_root().unwrap();
+  // let mut m2_tree: PermutedParallelMerkleTree<Vec<u8>, H> =
   //   PermutedParallelMerkleTree::new(&worker);
   // m2_tree.update(encoded_column.collect::<Vec<Vec<u8>>>());
   // let m2_root = m2_tree.root().unwrap();
@@ -186,8 +187,7 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   .iter()
   .map(|&i| i as usize)
   .collect::<Vec<_>>();
-  let (column_branches, _) =
-    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&encoded_column, &ys, &worker);
+  let column_branches = m2_tree.gen_proofs(&ys);
 
   // Compute the positions for the values in the polynomial
   let poly_positions: Vec<usize> = ys
@@ -202,8 +202,7 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
     // });
     .flatten()
     .collect();
-  let (poly_branches, _) =
-    gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&encoded_values, &poly_positions, &worker);
+  let poly_branches = m_tree.gen_proofs(&poly_positions);
 
   // This component of the proof, including Merkle branches
   acc.push(FriProof::Middle {
@@ -224,10 +223,10 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes>(
   )
 }
 
-pub fn verify_low_degree_proof<T: PrimeField + FromBytes + ToBytes>(
-  merkle_root: BlakeDigest,
+pub fn verify_low_degree_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
+  merkle_root: H,
   root_of_unity: T,
-  proof: &[FriProof],
+  proof: &[FriProof<H>],
   max_deg_plus_1: usize,
   exclude_multiples_of: u32,
 ) -> Result<bool, &str> {
@@ -242,11 +241,11 @@ pub fn verify_low_degree_proof<T: PrimeField + FromBytes + ToBytes>(
   )
 }
 
-pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
-  worker: Worker,
-  mut merkle_root: BlakeDigest,
+pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes, H: Digest>(
+  _worker: Worker,
+  mut merkle_root: H,
   mut root_of_unity: T,
-  proof: &[FriProof],
+  proof: &[FriProof<H>],
   mut max_deg_plus_1: usize,
   exclude_multiples_of: u32,
 ) -> Result<bool, &str> {
@@ -356,16 +355,25 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
   );
 
   let last_data = if let Some(FriProof::Last { last }) = proof.last() {
-    last.iter().map(|v| lazily!(v.to_vec())).collect::<Vec<_>>()
+    last.iter().map(|v| v.to_vec()).collect::<Vec<_>>()
   } else {
     return Err("The last element of FRI proofs must be FriProof::Last.");
     // return Err(SimpleError::new("The last element of FRI proofs must be FriProof::Last."));
   };
+  let last_data_len = last_data.len();
   assert!(last_data.len() > max_deg_plus_1);
 
+  let decoded_last_data: Vec<T> = last_data
+    .iter()
+    .map(|x| T::from_bytes_le(x).unwrap())
+    .collect();
+
   // Check the Merkle root matches up
-  let (_, m_root) = gen_multi_proofs_multi_core::<Vec<u8>, BlakeDigest>(&last_data, &[], &worker);
-  // let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, BlakeDigest> =
+  let mut m_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
+  m_tree.update(last_data);
+  m_tree.gen_proofs(&[]);
+  let m_root = m_tree.get_root().unwrap();
+  // let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, H> =
   //   PermutedParallelMerkleTree::new(&worker);
   // m_tree.update(last_data.clone());
   // let m_tree = merklize(last_data);
@@ -374,17 +382,12 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes>(
   // Check the degree of the last_data
   let xs = expand_root_of_unity(root_of_unity);
   let mut pts: Vec<usize> = if exclude_multiples_of != 0 {
-    (0..last_data.len())
+    (0..last_data_len)
       .filter(|&pos| pos % (exclude_multiples_of as usize) != 0)
       .collect()
   } else {
-    (0..last_data.len()).collect()
+    (0..last_data_len).collect()
   };
-
-  let decoded_last_data: Vec<T> = last_data
-    .iter()
-    .map(|x| T::from_bytes_le(x).unwrap())
-    .collect();
 
   // Verify the direct components of the proof
   let rest = pts.split_off(max_deg_plus_1); // pts[max_deg_plus_1..]
