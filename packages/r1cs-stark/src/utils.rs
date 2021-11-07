@@ -1,6 +1,6 @@
 use commitment::hash::Digest;
-use commitment::merkle_proof_in_place::MerkleProofInPlace;
 use commitment::merkle_tree::{MerkleTree, Proof};
+use commitment::pallarel_merkle_tree::ParallelMerkleTree;
 use ff::PrimeField;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
 use fri::fri::FriProof;
@@ -264,8 +264,8 @@ pub fn get_accumulator_tree_root<T: PrimeField + ToBytes, H: Digest>(
     })
     .collect::<Vec<_>>();
 
-  let mut a_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
-  a_tree.update(accumulator_str);
+  let mut a_tree: ParallelMerkleTree<Vec<u8>, H> = ParallelMerkleTree::new(accumulator_str);
+  a_tree.update();
   a_tree.gen_proofs(&[]);
   let a_root = a_tree.get_root().unwrap();
 

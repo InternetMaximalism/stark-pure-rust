@@ -1,7 +1,7 @@
 use crate::utils::*;
 use commitment::hash::Digest;
-use commitment::merkle_proof_in_place::MerkleProofInPlace;
 use commitment::merkle_tree::MerkleTree;
+use commitment::pallarel_merkle_tree::ParallelMerkleTree;
 use ff::PrimeField;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
 use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
@@ -234,34 +234,58 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
   println!("Computed B polynomial");
 
   // Compute their Merkle root
-  let poly_evaluations_str = p_evaluations
-    .iter()
-    .zip(&a_evaluations)
-    .zip(&s_evaluations)
-    .zip(&d1_evaluations)
-    .zip(&d2_evaluations)
-    .zip(&d3_evaluations)
-    .zip(&b2_evaluations)
-    .zip(&b3_evaluations)
-    .map(
-      |(((((((&p_val, &a_val), &s_val), &d1_val), &d2_val), &d3_val), &b_val), &b3_val)| {
-        let mut res = vec![];
-        res.extend(p_val.to_bytes_le().unwrap());
-        res.extend(a_val.to_bytes_le().unwrap());
-        res.extend(s_val.to_bytes_le().unwrap());
-        res.extend(d1_val.to_bytes_le().unwrap());
-        res.extend(d2_val.to_bytes_le().unwrap());
-        res.extend(d3_val.to_bytes_le().unwrap());
-        res.extend(b_val.to_bytes_le().unwrap());
-        res.extend(b3_val.to_bytes_le().unwrap());
-        res
-      },
-    )
-    .collect::<Vec<_>>();
+  // let poly_evaluations_str = p_evaluations
+  //   .iter()
+  //   .zip(&a_evaluations)
+  //   .zip(&s_evaluations)
+  //   .zip(&d1_evaluations)
+  //   .zip(&d2_evaluations)
+  //   .zip(&d3_evaluations)
+  //   .zip(&b2_evaluations)
+  //   .zip(&b3_evaluations)
+  //   .map(
+  //     |(((((((&p_val, &a_val), &s_val), &d1_val), &d2_val), &d3_val), &b_val), &b3_val)| {
+  //       let mut res = vec![];
+  //       res.extend(p_val.to_bytes_le().unwrap());
+  //       res.extend(a_val.to_bytes_le().unwrap());
+  //       res.extend(s_val.to_bytes_le().unwrap());
+  //       res.extend(d1_val.to_bytes_le().unwrap());
+  //       res.extend(d2_val.to_bytes_le().unwrap());
+  //       res.extend(d3_val.to_bytes_le().unwrap());
+  //       res.extend(b_val.to_bytes_le().unwrap());
+  //       res.extend(b3_val.to_bytes_le().unwrap());
+  //       res
+  //     },
+  //   )
+  //   .collect::<Vec<_>>();
   println!("Compute Merkle tree for the plain evaluations");
 
-  let mut m_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
-  m_tree.update(poly_evaluations_str);
+  let mut m_tree: ParallelMerkleTree<Vec<u8>, H> = ParallelMerkleTree::new(
+    p_evaluations
+      .iter()
+      .zip(&a_evaluations)
+      .zip(&s_evaluations)
+      .zip(&d1_evaluations)
+      .zip(&d2_evaluations)
+      .zip(&d3_evaluations)
+      .zip(&b2_evaluations)
+      .zip(&b3_evaluations)
+      .map(
+        |(((((((&p_val, &a_val), &s_val), &d1_val), &d2_val), &d3_val), &b_val), &b3_val)| {
+          let mut res = vec![];
+          res.extend(p_val.to_bytes_le().unwrap());
+          res.extend(a_val.to_bytes_le().unwrap());
+          res.extend(s_val.to_bytes_le().unwrap());
+          res.extend(d1_val.to_bytes_le().unwrap());
+          res.extend(d2_val.to_bytes_le().unwrap());
+          res.extend(d3_val.to_bytes_le().unwrap());
+          res.extend(b_val.to_bytes_le().unwrap());
+          res.extend(b3_val.to_bytes_le().unwrap());
+          res
+        },
+      ),
+  );
+  m_tree.update();
   m_tree.gen_proofs(&[]);
   let m_root = m_tree.get_root().unwrap();
   println!("Computed Merkle root for the plain evaluations");
@@ -323,13 +347,14 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
     );
   }
 
-  let l_evaluations_str = l_evaluations
-    .iter()
-    .map(|x| x.to_bytes_le().unwrap())
-    .collect::<Vec<_>>();
+  // let l_evaluations_str = l_evaluations
+  //   .iter()
+  //   .map(|x| x.to_bytes_le().unwrap())
+  //   .collect::<Vec<_>>();
 
-  let mut l_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
-  l_tree.update(l_evaluations_str);
+  let mut l_tree: ParallelMerkleTree<Vec<u8>, H> =
+    ParallelMerkleTree::new(l_evaluations.iter().map(|x| x.to_bytes_le().unwrap()));
+  l_tree.update();
   l_tree.gen_proofs(&[]);
   let l_root = l_tree.get_root().unwrap();
   println!("Computed Merkle root for the linear combination of evaluations");

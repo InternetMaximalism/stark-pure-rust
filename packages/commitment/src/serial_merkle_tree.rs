@@ -14,8 +14,9 @@ pub struct SerialMerkleTree<E: Element, H: Digest> {
 }
 
 impl<E: Element, H: Digest> SerialMerkleTree<E, H> {
-  pub fn new() -> Self {
-    let leaves = vec![];
+  pub fn new<I: IntoIterator<Item = E>>(leaves: I) -> Self {
+    let leaves: Vec<E> = leaves.into_iter().collect::<Vec<E>>();
+    // assert!(is_a_power_of_2(leaves.len()));
     let layers = vec![];
     Self { leaves, layers }
   }
@@ -51,14 +52,11 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for SerialMerkleTree<E, H> {
     }
   }
 
-  fn update<I: IntoIterator<Item = E>>(&mut self, leaves: I) {
-    let leaves: Vec<E> = leaves.into_iter().collect::<Vec<E>>();
-    // println!("leaves: {:?}", leaves);
-    // assert!(is_a_power_of_2(leaves.len()));
-
+  fn update(&mut self) {
     let mut layers: Vec<Vec<H>> = vec![];
     layers.push(
-      leaves
+      self
+        .leaves
         .iter()
         .map(|message| H::hash(message.as_ref()))
         .collect(),
@@ -88,7 +86,6 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for SerialMerkleTree<E, H> {
       layers.push(next_layer);
       current_layer = layers.last().unwrap();
     }
-    self.leaves = leaves;
     self.layers = layers;
   }
 

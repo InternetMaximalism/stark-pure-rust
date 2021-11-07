@@ -13,10 +13,24 @@ pub struct MerkleProofInPlace<'a, E: Element, H: Digest> {
 }
 
 impl<'a, E: Element, H: Digest> MerkleProofInPlace<'a, E, H> {
-  pub fn new() -> Self {
+  pub fn new<I: IntoIterator<Item = E>>(leaves: I) -> Self {
     let worker = Worker::new();
-    let leaves = vec![];
     let root = Some(H::default());
+    let leaves = leaves
+      .into_iter()
+      .map(|v| lazily!(v.clone()))
+      .collect::<Vec<_>>();
+    Self {
+      worker,
+      leaves,
+      root,
+    }
+  }
+
+  pub fn new_lazily<I: IntoIterator<Item = Delayed<'a, E>>>(leaves: I) -> Self {
+    let worker = Worker::new();
+    let root = Some(H::default());
+    let leaves = leaves.into_iter().collect::<Vec<_>>();
     Self {
       worker,
       leaves,
@@ -40,12 +54,7 @@ impl<'a, E: Element, H: Digest> MerkleTree<E, H> for MerkleProofInPlace<'a, E, H
     }
   }
 
-  fn update<I: IntoIterator<Item = E>>(&mut self, leaves: I) {
-    self.leaves = leaves
-      .into_iter()
-      .map(|x| lazily!(x.clone()))
-      .collect::<Vec<_>>();
-  }
+  fn update(&mut self) {}
 
   fn gen_proofs(&mut self, indices: &[usize]) -> Vec<Proof<E, H>> {
     let (merkle_proof, merkle_root) =
@@ -247,8 +256,9 @@ fn test_gen_multi_proofs_multi_core() {
   );
   // println!("{:?} {:?}", merkle_proofs, merkle_root);
 
-  let mut merkle_tree: SerialMerkleTree<Vec<u8>, BlakeDigest> = SerialMerkleTree::new();
-  merkle_tree.update(leaves.clone());
+  let mut merkle_tree: SerialMerkleTree<Vec<u8>, BlakeDigest> =
+    SerialMerkleTree::new(leaves.clone());
+  merkle_tree.update();
   let merkle_root2 = merkle_tree.get_root().unwrap();
   assert_eq!(merkle_root, merkle_root2, "invalid Merkle root");
 

@@ -68,7 +68,7 @@ pub trait MerkleTree<E: Element, H: Digest> {
   fn get_root(&self) -> Option<H>;
 
   // This method makes the Merkle tree.
-  fn update<I: IntoIterator<Item = E>>(&mut self, into: I);
+  fn update(&mut self);
 
   // This method returns the nodes that need to verify Merkle proof without leaf.
   fn gen_proofs(&mut self, indices: &[usize]) -> Vec<Proof<E, H>>;

@@ -3,9 +3,9 @@ use crate::poly_utils::{eval_poly_at, eval_quartic, lagrange_interp, multi_inter
 use crate::utils::get_pseudorandom_indices;
 
 use commitment::hash::Digest;
-use commitment::merkle_proof_in_place::MerkleProofInPlace;
 use commitment::merkle_tree::{verify_multi_branch, MerkleTree, Proof};
 use commitment::multicore::Worker;
+use commitment::pallarel_merkle_tree::ParallelMerkleTree;
 use ff::PrimeField;
 use ff_utils::ff_utils::{FromBytes, ToBytes};
 use serde::{Deserialize, Serialize};
@@ -125,8 +125,8 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes, H: Digest>(
   // let mut m: PermutedParallelMerkleTree<Vec<u8>, H> =
   //   PermutedParallelMerkleTree::new(&worker);
   // m.update(encoded_values.collect::<Vec<Vec<u8>>>());
-  let mut m_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
-  m_tree.update(encoded_values);
+  let mut m_tree: ParallelMerkleTree<Vec<u8>, H> = ParallelMerkleTree::new(encoded_values);
+  m_tree.update();
   m_tree.gen_proofs(&[]);
   let m_root = m_tree.get_root().unwrap();
 
@@ -166,8 +166,8 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes, H: Digest>(
     .iter()
     .map(|p| p.to_bytes_le().unwrap())
     .collect::<Vec<_>>();
-  let mut m2_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
-  m2_tree.update(encoded_column);
+  let mut m2_tree: ParallelMerkleTree<Vec<u8>, H> = ParallelMerkleTree::new(encoded_column);
+  m2_tree.update();
   m2_tree.gen_proofs(&[]);
   let m2_root = m2_tree.get_root().unwrap();
   // let mut m2_tree: PermutedParallelMerkleTree<Vec<u8>, H> =
@@ -369,8 +369,8 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes, H: Diges
     .collect();
 
   // Check the Merkle root matches up
-  let mut m_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
-  m_tree.update(last_data);
+  let mut m_tree: ParallelMerkleTree<Vec<u8>, H> = ParallelMerkleTree::new(last_data);
+  m_tree.update();
   m_tree.gen_proofs(&[]);
   let m_root = m_tree.get_root().unwrap();
   // let mut m_tree: PermutedParallelMerkleTree<Vec<u8>, H> =
