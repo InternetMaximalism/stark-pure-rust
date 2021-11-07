@@ -1,0 +1,3 @@
+[submodule "packages/franklin-crypto"]
+	path = packages/franklin-crypto
+	url = git@github.com:matter-labs/franklin-crypto.git

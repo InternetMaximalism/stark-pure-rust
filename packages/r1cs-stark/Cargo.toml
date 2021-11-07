@@ -14,6 +14,7 @@ bytes = "0.6.0"
 futures = {package = "futures", version = "0.3", default_features = false, features = ["executor", "thread-pool"]}
 num_cpus = "1"
 crossbeam = "0.7"
+franklin_crypto = { version = "0.0.5", path = "../franklin-crypto" }
 circom2bellman_core = { version = "0.1.0", path = "../circom2bellman_core" }
 ff_utils = { version = "0.1.0", path = "../ff_utils" }
 commitment = { version = "0.1.0", path = "../commitment" }
