@@ -1,0 +1,6 @@
+[submodule "packages/franklin-crypto"]
+	path = packages/franklin-crypto
+	url = git@github.com:Zk-Cloud-Main/franklin-crypto.git
+[submodule "packages/bellman"]
+	path = packages/bellman
+	url = git@github.com:Zk-Cloud-Main/bellman.git
