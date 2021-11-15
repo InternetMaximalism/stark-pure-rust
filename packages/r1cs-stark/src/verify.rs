@@ -1,4 +1,4 @@
-use bellman::plonk::polynomials::Polynomial;
+use bellman::plonk::polynomials::{Coefficients, Polynomial};
 use bellman::worker::Worker;
 use bellman::PrimeField;
 use commitment::hash::Digest;
@@ -67,7 +67,15 @@ pub fn verify_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Dig
   assert!(&times_nmr % &times_dnm == BigUint::from(0u8));
   let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) / precision
   let g2 = T::multiplicative_generator().pow(&times); // g2^precision = 1 mod modulus
-  let xs = expand_root_of_unity(g2);
+
+  // let xs = expand_root_of_unity(g2);
+  let worker = Worker::new();
+  let xs = {
+    let coeffs = vec![T::zero(); precision];
+    let mut xs = Polynomial::from_coeffs(coeffs).unwrap();
+    xs.distribute_powers(&worker, g2);
+    xs.into_coeffs()
+  };
   let skips = precision / steps; // EXTENSION_FACTOR
   let g1 = xs[skips];
   let log_order_of_g1 = log_steps as u32;
@@ -129,23 +137,26 @@ pub fn verify_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Dig
   let linear_comb_branch_leaves =
     verify_multi_branch(&l_root, &positions, linear_comb_branches).unwrap();
 
-  let z_polynomial = calc_z_polynomial(steps).unwrap();
+  let mut z_polynomial = calc_z_polynomial(steps).unwrap();
+  z_polynomial.pad_to_size(precision).unwrap();
   let z_evaluations = z_polynomial.fft(&worker);
 
   // let z3_polynomial = calc_z_polynomial(steps);
   // let z3_evaluations = best_fft(z3_polynomial, &g2, log_order_of_g2);
 
   let converted_indices: Vec<T> = convert_usize_iter_to_ff_vec(0..steps);
-  let index_polynomial = Polynomial::from_values(converted_indices)
+  let mut index_polynomial = Polynomial::from_values(converted_indices)
     .unwrap()
     .ifft(&worker);
+  index_polynomial.pad_to_size(precision).unwrap();
   let ext_indices = index_polynomial.fft(&worker);
   println!("Computed extended index polynomial");
 
   let converted_permuted_indices: Vec<T> = convert_usize_iter_to_ff_vec(permuted_indices.clone());
-  let permuted_polynomial = Polynomial::from_values(converted_permuted_indices)
+  let mut permuted_polynomial = Polynomial::from_values(converted_permuted_indices)
     .unwrap()
     .ifft(&worker);
+  permuted_polynomial.pad_to_size(precision).unwrap();
   let ext_permuted_indices = permuted_polynomial.fft(&worker);
   // println!("ext_permuted_indices: {:?}", ext_permuted_indices);
   println!("Computed extended permuted index polynomial");

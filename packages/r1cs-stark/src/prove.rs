@@ -88,7 +88,14 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
   let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) / precision
   let g2 = T::multiplicative_generator().pow(&times); // g2^precision = 1 mod modulus
   let start = std::time::Instant::now();
-  let xs = expand_root_of_unity(g2); // Powers of the higher-order root of unity
+  // let xs = expand_root_of_unity(g2); // Powers of the higher-order root of unity
+  let worker = Worker::new();
+  let xs = {
+    let coeffs = vec![T::zero(); precision];
+    let mut xs = Polynomial::from_coeffs(coeffs).unwrap();
+    xs.distribute_powers(&worker, g2);
+    xs.into_coeffs()
+  };
   let end: std::time::Duration = start.elapsed();
   println!(
     "Generated expand root of unity: {}.{:03}s",
@@ -106,7 +113,8 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
 
   let worker = Worker::new();
 
-  let k_polynomial = coefficients.ifft(&worker);
+  let mut k_polynomial = coefficients.ifft(&worker);
+  k_polynomial.pad_to_size(precision).unwrap();
   let k_evaluations = k_polynomial.fft(&worker);
   // let k_polynomial = inv_best_fft(coefficients, &g1, log_order_of_g1); // K(X)
   // let k_evaluations = best_fft(k_polynomial, &g2, log_order_of_g2);
@@ -114,42 +122,48 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
   println!("Converted coefficients into a polynomial and low-degree extended it");
 
   let flag0 = Polynomial::from_values(flag0.to_vec()).unwrap();
-  let f0_polynomial = flag0.ifft(&worker);
+  let mut f0_polynomial = flag0.ifft(&worker);
+  f0_polynomial.pad_to_size(precision).unwrap();
   let f0_evaluations = f0_polynomial.fft(&worker);
   // let f0_polynomial = inv_best_fft(flag0.to_vec(), &g1, log_order_of_g1);
   // let f0_evaluations = best_fft(f0_polynomial.clone(), &g2, log_order_of_g2);
   // println!("f0_evaluations: {:?}", f0_evaluations);
 
   let flag1 = Polynomial::from_values(flag1.to_vec()).unwrap();
-  let f1_polynomial = flag1.ifft(&worker);
+  let mut f1_polynomial = flag1.ifft(&worker);
+  f1_polynomial.pad_to_size(precision).unwrap();
   let f1_evaluations = f1_polynomial.fft(&worker);
   // let f1_polynomial = inv_best_fft(flag1.to_vec(), &g1, log_order_of_g1);
   // let f1_evaluations = best_fft(f1_polynomial, &g2, log_order_of_g2);
   // println!("f1_evaluations: {:?}", f1_evaluations);
 
   let flag2 = Polynomial::from_values(flag2.to_vec()).unwrap();
-  let f2_polynomial = flag2.ifft(&worker);
+  let mut f2_polynomial = flag2.ifft(&worker);
+  f2_polynomial.pad_to_size(precision).unwrap();
   let f2_evaluations = f2_polynomial.fft(&worker);
   // let f2_polynomial = inv_best_fft(flag2.to_vec(), &g1, log_order_of_g1);
   // let f2_evaluations = best_fft(f2_polynomial, &g2, log_order_of_g2);
   // println!("f2_evaluations: {:?}", f2_evaluations);
   println!("Converted flags into a polynomial and low-degree extended it");
 
-  let s_polynomial = witness_trace.clone().ifft(&worker);
+  let mut s_polynomial = witness_trace.clone().ifft(&worker);
+  s_polynomial.pad_to_size(precision).unwrap();
   let s_evaluations = s_polynomial.fft(&worker);
   // let s_polynomial = inv_best_fft(witness_trace.clone(), &g1, log_order_of_g1); // S(X)
   // let s_evaluations = best_fft(s_polynomial, &g2, log_order_of_g2);
   // println!("s_evaluations: {:?}", s_evaluations);
   println!("Converted witness trace into a polynomial and low-degree extended it");
 
-  let p_polynomial = computational_trace.ifft(&worker);
+  let mut p_polynomial = computational_trace.ifft(&worker);
+  p_polynomial.pad_to_size(precision).unwrap();
   let p_evaluations = p_polynomial.fft(&worker);
   // let p_polynomial = inv_best_fft(computational_trace, &g1, log_order_of_g1); // P(X)
   // let p_evaluations = best_fft(p_polynomial, &g2, log_order_of_g2);
   // println!("p_evaluations: {:?}", p_evaluations);
   println!("Converted computational trace into a polynomial and low-degree extended it");
 
-  let z_polynomial = calc_z_polynomial(steps).unwrap();
+  let mut z_polynomial = calc_z_polynomial(steps).unwrap();
+  z_polynomial.pad_to_size(precision).unwrap();
   let z_evaluations = z_polynomial.fft(&worker);
   // let z_evaluations = best_fft(z_polynomial, &g2, log_order_of_g2);
   // println!("z_evaluations: {:?}", z_evaluations);
@@ -185,18 +199,20 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
   //   .map(|v| T::from_bytes_le(v.to_le_bytes().as_ref()).unwrap())
   //   .collect::<Vec<_>>();
   let converted_indices = convert_usize_iter_to_ff_vec(0..steps);
-  let index_polynomial = Polynomial::from_values(converted_indices)
+  let mut index_polynomial = Polynomial::from_values(converted_indices)
     .unwrap()
     .ifft(&worker);
+  index_polynomial.pad_to_size(precision).unwrap();
   let ext_indices = index_polynomial.fft(&worker);
   // let index_polynomial = inv_best_fft(converted_indices, &g1, log_order_of_g1);
   // let ext_indices = best_fft(index_polynomial, &g2, log_order_of_g2);
   println!("Computed extended index polynomial");
 
   let converted_permuted_indices = convert_usize_iter_to_ff_vec(permuted_indices.clone());
-  let permuted_polynomial = Polynomial::from_values(converted_permuted_indices)
+  let mut permuted_polynomial = Polynomial::from_values(converted_permuted_indices)
     .unwrap()
     .ifft(&worker);
+  permuted_polynomial.pad_to_size(precision).unwrap();
   let ext_permuted_indices = permuted_polynomial.fft(&worker);
   // let permuted_polynomial = inv_best_fft(converted_permuted_indices, &g1, log_order_of_g1);
   // let ext_permuted_indices = best_fft(permuted_polynomial, &g2, log_order_of_g2);
@@ -216,7 +232,8 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
     skips,
   )
   .unwrap();
-  let a_polynomial = a_mini_evaluations.ifft(&worker);
+  let mut a_polynomial = a_mini_evaluations.ifft(&worker);
+  a_polynomial.pad_to_size(precision).unwrap();
   let a_evaluations = a_polynomial.fft(&worker);
   // let a_polynomials = inv_best_fft(a_mini_evaluations, &g1, log_order_of_g1);
   // let a_evaluations = best_fft(a_polynomials, &g2, log_order_of_g2);
