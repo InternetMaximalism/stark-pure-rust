@@ -1,18 +1,21 @@
-use crate::utils::*;
+use bellman::plonk::polynomials::Polynomial;
+use bellman::worker::Worker;
+use bellman::PrimeField;
 use commitment::hash::Digest;
 use commitment::merkle_tree::verify_multi_branch;
-use ff::PrimeField;
-use ff_utils::ff_utils::{FromBytes, ToBytes};
-use fri::fft::{best_fft, expand_root_of_unity, inv_best_fft};
-use fri::fri::verify_low_degree_proof;
-use fri::poly_utils::eval_poly_at;
-use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
+use ff_utils::ff_utils::{FromBytes, ScalarOps, ToBytes};
+use fri::{
+  fri::verify_low_degree_proof,
+  utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec},
+};
 #[allow(unused_imports)]
 use log::{debug, info};
 use num::bigint::BigUint;
 use std::io::Error;
 
-pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
+use crate::utils::*;
+
+pub fn verify_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>(
   proof: StarkProof<H>,
   public_wires: &[T],
   public_first_indices: &[(usize, usize)],
@@ -41,9 +44,11 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
 
   let mut permuted_indices = permuted_indices.to_vec();
   permuted_indices.extend(original_steps..steps);
+  // println!("permuted_indices: {:?}", permuted_indices);
 
   let mut coefficients = coefficients.to_vec();
   coefficients.extend(vec![T::zero(); steps - original_steps]);
+  let coefficients = Polynomial::from_values(coefficients).unwrap();
 
   // start_time = time.time()
   let StarkProof {
@@ -61,7 +66,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
   let times_dnm = BigUint::from_bytes_le(&precision.to_le_bytes());
   assert!(&times_nmr % &times_dnm == BigUint::from(0u8));
   let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) / precision
-  let g2 = T::multiplicative_generator().pow_vartime(&times); // g2^precision = 1 mod modulus
+  let g2 = T::multiplicative_generator().pow(&times); // g2^precision = 1 mod modulus
   let xs = expand_root_of_unity(g2);
   let skips = precision / steps; // EXTENSION_FACTOR
   let g1 = xs[skips];
@@ -72,12 +77,17 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
   // along a successive power of g1
   println!("calculate expanding polynomials");
 
-  let k_polynomial = inv_best_fft(coefficients, &g1, log_order_of_g1);
+  let worker = Worker::new();
+
+  let k_polynomial = coefficients.ifft(&worker);
   println!("Converted coefficients into a polynomial and low-degree extended it");
 
-  let f0_polynomial = inv_best_fft(flag0.to_vec(), &g1, log_order_of_g1);
-  let f1_polynomial = inv_best_fft(flag1.to_vec(), &g1, log_order_of_g1);
-  let f2_polynomial = inv_best_fft(flag2.to_vec(), &g1, log_order_of_g1);
+  let flag0 = Polynomial::from_values(flag0.to_vec()).unwrap();
+  let f0_polynomial = flag0.ifft(&worker);
+  let flag1 = Polynomial::from_values(flag1.to_vec()).unwrap();
+  let f1_polynomial = flag1.ifft(&worker);
+  let flag2 = Polynomial::from_values(flag2.to_vec()).unwrap();
+  let f2_polynomial = flag2.ifft(&worker);
   println!("Converted flags into a polynomial and low-degree extended it");
 
   // Verifies the low-degree proofs
@@ -119,20 +129,24 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
   let linear_comb_branch_leaves =
     verify_multi_branch(&l_root, &positions, linear_comb_branches).unwrap();
 
-  let z_polynomial = calc_z_polynomial(steps);
-  let z_evaluations = best_fft(z_polynomial, &g2, log_order_of_g2);
+  let z_polynomial = calc_z_polynomial(steps).unwrap();
+  let z_evaluations = z_polynomial.fft(&worker);
 
   // let z3_polynomial = calc_z_polynomial(steps);
   // let z3_evaluations = best_fft(z3_polynomial, &g2, log_order_of_g2);
 
-  let converted_indices = convert_usize_iter_to_ff_vec(0..steps);
-  let index_polynomial = inv_best_fft(converted_indices, &g1, log_order_of_g1);
-  let ext_indices = best_fft(index_polynomial, &g2, log_order_of_g2);
+  let converted_indices: Vec<T> = convert_usize_iter_to_ff_vec(0..steps);
+  let index_polynomial = Polynomial::from_values(converted_indices)
+    .unwrap()
+    .ifft(&worker);
+  let ext_indices = index_polynomial.fft(&worker);
   println!("Computed extended index polynomial");
 
-  let converted_permuted_indices = convert_usize_iter_to_ff_vec(permuted_indices.clone());
-  let permuted_polynomial = inv_best_fft(converted_permuted_indices, &g1, log_order_of_g1);
-  let ext_permuted_indices = best_fft(permuted_polynomial, &g2, log_order_of_g2);
+  let converted_permuted_indices: Vec<T> = convert_usize_iter_to_ff_vec(permuted_indices.clone());
+  let permuted_polynomial = Polynomial::from_values(converted_permuted_indices)
+    .unwrap()
+    .ifft(&worker);
+  let ext_permuted_indices = permuted_polynomial.fft(&worker);
   // println!("ext_permuted_indices: {:?}", ext_permuted_indices);
   println!("Computed extended permuted index polynomial");
 
@@ -151,10 +165,10 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
   //   lagrange_interp(&x_vals, &y_vals)
   // };
 
-  let interpolant2 = calc_i2_polynomial(public_first_indices, &xs, &public_wires, skips);
+  let interpolant2 = calc_i2_polynomial(public_first_indices, &xs, &public_wires, skips).unwrap();
 
   let x_of_last_step = xs[(steps - 1) * skips];
-  let interpolant3 = calc_i3_polynomial(&xs, skips);
+  let interpolant3 = calc_i3_polynomial(&xs, skips).unwrap();
   println!("Computed boundary polynomial");
 
   let r: Vec<T> = get_random_ff_values(a_root.as_ref(), precision as u32, 3, 0);
@@ -196,14 +210,14 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
     let b_of_x = T::from_bytes_le(m_branch0[6]).unwrap();
     let b3_of_x = T::from_bytes_le(m_branch0[7]).unwrap();
 
-    let z_value = z_evaluations[pos];
+    let z_value: T = z_evaluations.as_ref()[pos];
     // let z2_value = z2_evaluations[pos];
     // let z3_value = z3_evaluations[pos];
 
-    let k_of_x = eval_poly_at(&k_polynomial, x);
-    let f0 = eval_poly_at(&f0_polynomial, x);
-    let f1 = eval_poly_at(&f1_polynomial, x);
-    let f2 = eval_poly_at(&f2_polynomial, x);
+    let k_of_x = k_polynomial.evaluate_at(&worker, x);
+    let f0 = f0_polynomial.evaluate_at(&worker, x);
+    let f1 = f1_polynomial.evaluate_at(&worker, x);
+    let f2 = f2_polynomial.evaluate_at(&worker, x);
 
     // Check first transition constraints Q1(x) = Z1(x) * D1(x)
     assert_eq!(
@@ -217,8 +231,8 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
       z_value * d2_of_x
     );
 
-    let val_nmr = r[0] + r[1] * ext_indices[pos] + r[2] * s_of_x;
-    let val_dnm = r[0] + r[1] * ext_permuted_indices[pos] + r[2] * s_of_x;
+    let val_nmr: T = r[0] + r[1] * ext_indices.as_ref()[pos] + r[2] * s_of_x;
+    let val_dnm: T = r[0] + r[1] * ext_permuted_indices.as_ref()[pos] + r[2] * s_of_x;
 
     // Check third transition constraints Q3(x) = Z3(x) * D3(x)
     assert_eq!(a_of_x * val_dnm - a_of_prev_x * val_nmr, z_value * d3_of_x);
@@ -226,17 +240,18 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
     // Check boundary constraints P(x) - I(x) = Zb(x) * B(x)
     let mut zb2_of_x = T::one();
     for (_, w) in public_first_indices {
-      zb2_of_x *= x - xs[w * skips];
+      let v = x - xs[w * skips];
+      zb2_of_x.mul_assign(&v);
     }
-    let i2_of_x = eval_poly_at(&interpolant2, x);
+    let i2_of_x = interpolant2.evaluate_at(&worker, x);
     assert_eq!(s_of_x - i2_of_x, zb2_of_x * b_of_x);
 
     let zb3_of_x = x - x_of_last_step;
-    let i3_of_x = eval_poly_at(&interpolant3, x);
+    let i3_of_x = interpolant3.evaluate_at(&worker, x);
     assert_eq!(a_of_x - i3_of_x, zb3_of_x * b3_of_x);
 
     // Check correctness of the linear combination
-    let x_to_the_steps = x.pow_vartime(&parse_bytes_to_u64_vec(&steps.to_le_bytes()));
+    let x_to_the_steps = x.pow(&parse_bytes_to_u64_vec(&steps.to_le_bytes()));
     let l_of_x = T::from_bytes_le(&linear_comb_branch_leaves[i]).unwrap();
     assert_eq!(
       l_of_x,

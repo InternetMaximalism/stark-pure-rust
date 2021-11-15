@@ -3,17 +3,6 @@
 version = 3
 
 [[package]]
-name = "addchain"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b2e69442aa5628ea6951fa33e24efe8313f4321a91bd729fc2f75bdfc858570"
-dependencies = [
- "num-bigint 0.3.2",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
 name = "arrayref"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -30,6 +19,25 @@ name = "autocfg"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
+
+[[package]]
+name = "bellman_ce"
+version = "0.3.2"
+dependencies = [
+ "bit-vec",
+ "blake2s_const",
+ "blake2s_simd",
+ "byteorder",
+ "cfg-if 1.0.0",
+ "crossbeam",
+ "futures",
+ "hex",
+ "lazy_static",
+ "num_cpus",
+ "pairing_ce 0.26.0",
+ "rand 0.4.6",
+ "tiny-keccak",
+]
 
 [[package]]
 name = "bellperson"
@@ -82,6 +90,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bit-vec"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
+
+[[package]]
 name = "bitflags"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -108,6 +122,15 @@ dependencies = [
  "crypto-mac",
  "digest",
  "opaque-debug",
+]
+
+[[package]]
+name = "blake2s_const"
+version = "0.6.0"
+dependencies = [
+ "arrayref",
+ "arrayvec",
+ "constant_time_eq",
 ]
 
 [[package]]
@@ -383,6 +406,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "crunchy"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
+
+[[package]]
 name = "crypto-mac"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -451,8 +480,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63eec06c61e487eecf0f7e6e6372e596a81922c28d33e645d6983ca6493a1af0"
 dependencies = [
  "bitvec",
- "byteorder",
- "ff_derive",
  "rand_core 0.6.3",
  "subtle",
 ]
@@ -493,18 +520,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "ff_derive"
-version = "0.10.0"
+name = "ff_ce"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e07901c36653bd269dd407bbc5038ee4babeb36caeff896539ff9bcadf501399"
+checksum = "ce9180c0561effb4f0bd2b9ed62d856b039e860d695d51fe690902f7b8157fe5"
 dependencies = [
- "addchain",
- "num-bigint 0.3.2",
- "num-integer",
- "num-traits",
- "proc-macro2",
- "quote",
- "syn",
+ "byteorder",
+ "ff_derive_ce 0.10.0",
+ "hex",
+ "rand 0.4.6",
 ]
 
 [[package]]
@@ -536,20 +560,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "ff_derive_ce"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2c85c41b0578de2b2c68bd3513c2a402cc92ea11961295c55987fc1f8e8310c"
+dependencies = [
+ "num-bigint 0.4.0",
+ "num-integer",
+ "num-traits",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "ff_utils"
 version = "0.1.0"
 dependencies = [
+ "bellman_ce",
  "bitvec",
  "blake2",
  "byteorder",
  "crossbeam",
- "ff 0.10.0",
+ "ff_ce 0.13.1",
  "futures",
  "group 0.10.0",
  "hex",
  "num 0.4.0",
  "num_cpus",
  "pairing_ce 0.24.2",
+ "rand 0.4.6",
  "rand_core 0.6.3",
  "serde",
  "subtle",
@@ -568,12 +608,12 @@ dependencies = [
 name = "fri"
 version = "0.1.0"
 dependencies = [
+ "bellman_ce",
  "bitvec",
  "blake2",
  "byteorder",
  "commitment",
  "crossbeam",
- "ff 0.10.0",
  "ff_utils",
  "futures",
  "group 0.10.0",
@@ -901,17 +941,6 @@ dependencies = [
 
 [[package]]
 name = "num-bigint"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d0a3d5e207573f948a9e5376662aa743a2ea13f7c50a554d7af443a73fbfeba"
-dependencies = [
- "autocfg",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
-name = "num-bigint"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e0d047c1062aa51e256408c560894e5251f08925980e53cf1aa5bd00eec6512"
@@ -1044,6 +1073,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "pairing_ce"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40466bd63c23208e7907a80ab824dc1096f5bb5e0ddafbc6abf44cca0bdd4637"
+dependencies = [
+ "byteorder",
+ "cfg-if 1.0.0",
+ "ff_ce 0.13.1",
+ "rand 0.4.6",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1095,14 +1136,15 @@ dependencies = [
 name = "r1cs-stark"
 version = "0.1.0"
 dependencies = [
+ "bellman_ce",
  "bytes",
  "circom2bellman_core",
  "commitment",
  "crossbeam",
- "ff 0.10.0",
  "ff_utils",
  "fri",
  "futures",
+ "group 0.11.0",
  "log",
  "num 0.4.0",
  "num_cpus",
@@ -1415,6 +1457,15 @@ dependencies = [
  "libc",
  "wasi",
  "winapi",
+]
+
+[[package]]
+name = "tiny-keccak"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d8a021c69bb74a44ccedb824a046447e2c84a01df9e5c20779750acb38e11b2"
+dependencies = [
+ "crunchy",
 ]
 
 [[package]]

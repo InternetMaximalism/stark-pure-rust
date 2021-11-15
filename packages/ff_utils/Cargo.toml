@@ -5,19 +5,21 @@ edition = "2018"
 
 [dependencies]
 blake2 = "0.9.1"
-ff = { version = "0.10.0", features = ["default", "derive"] }
+ff = {package = "ff_ce", version = "0.13.*", features = ["derive"]}
 group = "0.10"
 pairing_ce = "0.24.2"
 subtle = "2.4"
 byteorder = "1"
 bitvec = "0.22"
 rand_core = "0.6"
+rand = "0.4.6"
 num = "0.4"
 hex = "0.4.3"
 serde = { version = "^1.0.101", features = ["derive"] }
 futures = {package = "futures", version = "0.3", default_features = false, features = ["executor", "thread-pool"]}
 num_cpus = "1"
 crossbeam = "0.7"
+bellman = { package = "bellman_ce", path = "../bellman" }
 
 [lib]
 name = "ff_utils"

@@ -5,7 +5,7 @@ edition = "2018"
 
 [dependencies]
 blake2 = "0.9.1"
-ff = "0.10.0"
+# ff = {package = "ff_ce", version = "0.13.*", features = ["derive"]}
 group = "0.10"
 pairing_ce = "0.24.2"
 subtle = "2.4"
@@ -20,6 +20,7 @@ num_cpus = "1"
 crossbeam = "0.7"
 ff_utils = { version = "0.1.0", path = "../ff_utils" }
 commitment = { version = "0.1.0", path = "../commitment" }
+bellman = { package = "bellman_ce", path = "../bellman" }
 
 [lib]
 name = "fri"

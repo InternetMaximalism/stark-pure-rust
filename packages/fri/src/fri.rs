@@ -1,13 +1,13 @@
-use crate::fft::expand_root_of_unity;
-use crate::poly_utils::{eval_poly_at, eval_quartic, lagrange_interp, multi_interp_4};
+use crate::interpolation::{eval_quartic, interpolate, multi_interp_4};
 use crate::utils::get_pseudorandom_indices;
 
+use bellman::plonk::polynomials::Polynomial;
+use bellman::worker::Worker;
 use commitment::hash::Digest;
 use commitment::merkle_proof_in_place::MerkleProofInPlace;
 use commitment::merkle_tree::{verify_multi_branch, MerkleTree, Proof};
-use commitment::multicore::Worker;
-use ff::PrimeField;
-use ff_utils::ff_utils::{FromBytes, ToBytes};
+use ff_utils::ff::PrimeField;
+use ff_utils::ff_utils::{FromBytes, ScalarOps, ToBytes};
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 
@@ -25,7 +25,45 @@ pub enum FriProof<H: Digest> {
   },
 }
 
-pub fn prove_low_degree_directly<T: PrimeField + FromBytes + ToBytes, H: Digest>(
+pub fn expand_root_of_unity<T: PrimeField>(root_of_unity: T) -> Vec<T> {
+  let mut output = vec![T::one()];
+  let mut current_root = root_of_unity;
+  while current_root != T::one() {
+    output.push(current_root);
+    current_root.mul_assign(&root_of_unity);
+  }
+
+  output
+}
+
+#[test]
+fn test_expand_root_of_unity() {
+  use ff_utils::f7::F7;
+
+  let root_of_unity = F7::multiplicative_generator();
+  let roots_of_unity: Vec<F7> = [1, 3, 2, 6, 4, 5]
+    .iter()
+    .map(|x| F7::from(*x as u64))
+    .collect();
+  let res = expand_root_of_unity(root_of_unity);
+  assert_eq!(res, roots_of_unity);
+
+  use crate::utils::parse_bytes_to_u64_vec;
+  use ff::Field;
+  use ff_utils::ff_utils::ToBytes;
+  use ff_utils::fp::Fp;
+  use num::bigint::BigUint;
+
+  let precision = 65536usize;
+  let times_nmr = BigUint::from_bytes_le(&(Fp::zero() - Fp::one()).to_bytes_le().unwrap());
+  let times_dnm = BigUint::from_bytes_le(&precision.to_le_bytes());
+  let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) /precision
+  let root_of_unity = Fp::multiplicative_generator().pow(&times);
+  let res = expand_root_of_unity(root_of_unity);
+  assert_eq!(res.len(), precision);
+}
+
+pub fn prove_low_degree_directly<T: PrimeField + FromBytes + ToBytes + ScalarOps, H: Digest>(
   values: &[T],
   root_of_unity: T,
   max_deg_plus_1: usize,
@@ -43,7 +81,7 @@ pub fn prove_low_degree_directly<T: PrimeField + FromBytes + ToBytes, H: Digest>
   )
 }
 
-pub fn prove_low_degree<T: PrimeField + FromBytes + ToBytes, H: Digest>(
+pub fn prove_low_degree<T: PrimeField + FromBytes + ToBytes + ScalarOps, H: Digest>(
   values: &[T],
   root_of_unity: T,
   max_deg_plus_1: usize,
@@ -61,7 +99,7 @@ pub fn prove_low_degree<T: PrimeField + FromBytes + ToBytes, H: Digest>(
   )
 }
 
-fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes, H: Digest>(
+fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes + ScalarOps, H: Digest>(
   mut acc: Vec<FriProof<H>>,
   worker: Worker,
   values: &[T],
@@ -96,13 +134,19 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes, H: Digest>(
     };
 
     let rest = pts.split_off(max_deg_plus_1); // pts[max_deg_plus_1..]
-    let x_vals: Vec<T> = pts.iter().map(|&pos| xs[pos]).collect();
-    let y_vals: Vec<T> = pts.iter().map(|&pos| values[pos]).collect();
-    let poly = lagrange_interp(&x_vals, &y_vals);
+
+    // let x_vals: Vec<T> = pts.iter().map(|&pos| xs[pos]).collect();
+    // let y_vals: Vec<T> = pts.iter().map(|&pos| values[pos]).collect();
+    // let poly = Polynomial::from_coeffs(interpolate(&xy_pairs).unwrap()).unwrap();
+    let xy_pairs = pts
+      .iter()
+      .map(|&pos| (xs[pos], values[pos]))
+      .collect::<Vec<_>>();
+    let poly = Polynomial::from_coeffs(interpolate(&xy_pairs).unwrap()).unwrap();
 
     for (_, &pos) in rest.iter().enumerate() {
       // Fail to prove low degree if this error occurs.
-      debug_assert_eq!(eval_poly_at(&poly, xs[pos]), values[pos]);
+      debug_assert_eq!(poly.evaluate_at(&worker, xs[pos]), values[pos]);
     }
 
     acc.push(FriProof::Last {
@@ -216,14 +260,14 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes, H: Digest>(
     acc,
     worker,
     &column,
-    root_of_unity.pow_vartime(&[4u64]),
+    root_of_unity.pow(&[4u64]),
     max_deg_plus_1 / 4,
     deg_direct_checking,
     exclude_multiples_of,
   )
 }
 
-pub fn verify_low_degree_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
+pub fn verify_low_degree_proof<T: PrimeField + FromBytes + ToBytes + ScalarOps, H: Digest>(
   merkle_root: H,
   root_of_unity: T,
   proof: &[FriProof<H>],
@@ -241,8 +285,8 @@ pub fn verify_low_degree_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
   )
 }
 
-pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes, H: Digest>(
-  _worker: Worker,
+pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes + ScalarOps, H: Digest>(
+  worker: Worker,
   mut merkle_root: H,
   mut root_of_unity: T,
   proof: &[FriProof<H>],
@@ -254,16 +298,16 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes, H: Diges
   let mut rou_deg = 1u64;
   while test_val != T::one() {
     rou_deg *= 2;
-    test_val = test_val * test_val;
+    test_val.mul_assign(&test_val.clone());
   }
-  debug_assert_eq!(root_of_unity.pow_vartime(&[rou_deg]), T::one());
+  debug_assert_eq!(root_of_unity.pow(&[rou_deg]), T::one());
 
   // Powers of the given root of unity 1, p, p**2, p**3 such that p**4 = 1
   let quartic_roots_of_unity = [
     T::one(),
-    root_of_unity.pow_vartime(&[rou_deg / 4]),
-    root_of_unity.pow_vartime(&[rou_deg / 2]),
-    root_of_unity.pow_vartime(&[rou_deg * 3 / 4]),
+    root_of_unity.pow(&[rou_deg / 4]),
+    root_of_unity.pow(&[rou_deg / 2]),
+    root_of_unity.pow(&[rou_deg * 3 / 4]),
   ];
 
   // Verify the recursive components of the proof
@@ -314,10 +358,12 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes, H: Diges
     let mut column_vals = vec![];
     for i in 0..ys.len() {
       // The x coordinates from the polynomial
-      let x1 = root_of_unity.pow_vartime(&[ys[i].try_into().unwrap()]);
+      let x1 = root_of_unity.pow(&[ys[i].try_into().unwrap()]);
       let mut x_coord = [T::zero(); 4];
       for j in 0..4 {
-        x_coord[j] = quartic_roots_of_unity[j] * x1;
+        let mut v = quartic_roots_of_unity[j];
+        v.mul_assign(&x1);
+        x_coord[j] = v;
       }
       x_coords.push(x_coord);
 
@@ -343,7 +389,7 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes, H: Diges
 
     // Update constants to check the next proof
     merkle_root = root2.clone();
-    root_of_unity = root_of_unity.pow_vartime(&[4]);
+    root_of_unity = root_of_unity.pow(&[4]);
     max_deg_plus_1 /= 4;
     rou_deg /= 4;
   }
@@ -391,11 +437,17 @@ pub fn verify_low_degree_proof_rec<T: PrimeField + FromBytes + ToBytes, H: Diges
 
   // Verify the direct components of the proof
   let rest = pts.split_off(max_deg_plus_1); // pts[max_deg_plus_1..]
-  let x_vals: Vec<T> = pts.iter().map(|&pos| xs[pos]).collect();
-  let y_vals: Vec<T> = pts.iter().map(|&pos| decoded_last_data[pos]).collect();
-  let poly = lagrange_interp(&x_vals, &y_vals);
+
+  // let x_vals: Vec<T> = pts.iter().map(|&pos| xs[pos]).collect();
+  // let y_vals: Vec<T> = pts.iter().map(|&pos| decoded_last_data[pos]).collect();
+  // let poly = Polynomial::from_coeffs(lagrange_interp(&x_vals, &y_vals)).unwrap();
+  let xy_pairs = pts
+    .iter()
+    .map(|&pos| (xs[pos], decoded_last_data[pos]))
+    .collect::<Vec<_>>();
+  let poly = Polynomial::from_coeffs(interpolate(&xy_pairs).unwrap()).unwrap();
   for (_, &pos) in rest.iter().enumerate() {
-    assert_eq!(eval_poly_at(&poly, xs[pos]), decoded_last_data[pos]);
+    assert_eq!(poly.evaluate_at(&worker, xs[pos]), decoded_last_data[pos]);
   }
 
   println!("FRI proof verified");

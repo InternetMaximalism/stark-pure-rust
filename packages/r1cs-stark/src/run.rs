@@ -7,8 +7,8 @@ use crate::verify::verify_r1cs_proof;
 
 use circom2bellman_core::Constraint;
 use commitment::hash::Digest;
-use ff::{Field, PrimeField};
-use ff_utils::ff_utils::FromBytes;
+use ff_utils::ff::PrimeField;
+use ff_utils::ff_utils::{FromBytes, ScalarOps};
 use ff_utils::fp::Fp;
 #[allow(unused_imports)]
 use log::{debug, info};
@@ -108,7 +108,7 @@ fn calc_coefficients<T: PrimeField + FromBytes>(
   (coefficients, wire_using_list, last_coeff_list)
 }
 
-fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
+fn calc_coefficients_and_witness<T: PrimeField + FromBytes + ScalarOps>(
   constraints: &[Constraint],
   witness: &[T],
   n_wires: usize,
@@ -282,7 +282,7 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
   )
 }
 
-fn calc_flags<T: PrimeField>(
+fn calc_flags<T: PrimeField + FromBytes>(
   last_coeff_list: &[usize],
   coefficients_len: usize,
 ) -> (Vec<T>, Vec<T>, Vec<T>) {
@@ -303,7 +303,7 @@ fn calc_flags<T: PrimeField>(
 
   let mut flag2 = vec![T::zero(); coefficients_len];
   for k in last_coeff_list {
-    flag2[*k] = T::from(1u64);
+    flag2[*k] = T::one();
   }
 
   (flag0, flag1, flag2)
@@ -357,7 +357,7 @@ pub fn prove_with_witness<H: Digest>(
     .iter()
     .map(|x| TargetFF::from_bytes_le(x).unwrap())
     .collect();
-  assert_eq!(witness[0], TargetFF::one());
+  assert_eq!(witness[0], TargetFF::from_bytes_le(&[1]).unwrap());
   let public_wires = witness[..(1 + n_public_inputs as usize + n_public_outputs as usize)].to_vec();
 
   // Generate the computational trace
@@ -478,7 +478,7 @@ fn verify_with_witness<H: Digest>(
     .iter()
     .map(|x| TargetFF::from_bytes_le(x).unwrap())
     .collect();
-  assert_eq!(public_wires[0], TargetFF::one());
+  assert_eq!(public_wires[0], TargetFF::from_bytes_le(&[1]).unwrap());
 
   println!("Generate coefficients");
   let (coefficients, wire_using_list, last_coeff_list) =
