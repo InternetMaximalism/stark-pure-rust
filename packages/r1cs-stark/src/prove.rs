@@ -6,10 +6,9 @@ use commitment::merkle_proof_in_place::MerkleProofInPlace;
 use commitment::merkle_tree::MerkleTree;
 use ff_utils::ff_utils::{FromBytes, ScalarOps, ToBytes};
 use fri::fri::prove_low_degree;
-use fri::utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec};
+use fri::utils::{get_powers, get_pseudorandom_indices};
 #[allow(unused_imports)]
 use log::{debug, info};
-use num::bigint::BigUint;
 use std::io::Error;
 
 use crate::poly_utils::multi_inv;
@@ -28,6 +27,8 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
   n_constraints: usize,
   n_wires: usize,
 ) -> Result<StarkProof<H>, Error> {
+  let worker = Worker::new();
+
   // println!("n_cons: {:?}", n_constraints);
   // println!("n_wires: {:?}", n_wires);
   // println!("n_public_wires: {:?}", public_wires.len());
@@ -51,7 +52,7 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
     original_steps * EXTENSION_FACTOR
   );
 
-  let log_precision = log_steps + LOG_EXTENSION_FACTOR as u32;
+  // let log_precision = log_steps + LOG_EXTENSION_FACTOR as u32;
   let log_max_precision = calc_max_log_precision::<T>();
   println!("max_precision: 2^{:?}", log_max_precision);
   assert!(precision <= 2usize.pow(log_max_precision));
@@ -75,27 +76,8 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
   let computational_trace = Polynomial::from_values(computational_trace).unwrap();
   // println!("computational_trace: {:?}", computational_trace.as_ref());
 
-  let ff_order = T::zero() - T::one();
-  let times_nmr = BigUint::from_bytes_le(&ff_order.to_bytes_le().unwrap());
-  let times_dnm = BigUint::from_bytes_le(&precision.to_le_bytes());
-  assert!(&times_nmr % &times_dnm == BigUint::from(0u8));
-  {
-    let times = parse_bytes_to_u64_vec(&times_nmr.to_bytes_le()); // modulus - 1
-    let unity = T::multiplicative_generator().pow(&times);
-    debug_assert_eq!(unity, T::one()); // g0^(modulus - 1) = 1 mod modulus
-  }
-
-  let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) / precision
-  let g2 = T::multiplicative_generator().pow(&times); // g2^precision = 1 mod modulus
   let start = std::time::Instant::now();
-  // let xs = expand_root_of_unity(g2); // Powers of the higher-order root of unity
-  let worker = Worker::new();
-  let xs = {
-    let coeffs = vec![T::zero(); precision];
-    let mut xs = Polynomial::from_coeffs(coeffs).unwrap();
-    xs.distribute_powers(&worker, g2);
-    xs.into_coeffs()
-  };
+  let xs = get_powers(precision, &worker).unwrap().into_coeffs();
   let end: std::time::Duration = start.elapsed();
   println!(
     "Generated expand root of unity: {}.{:03}s",
@@ -103,44 +85,46 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
     end.subsec_nanos() / 1_000_000
   );
   let skips = precision / steps; // EXTENSION_FACTOR
-  let g1 = xs[skips]; // root of unity x such that x^steps = 1
-  let log_order_of_g1 = log_steps as u32;
-  let log_order_of_g2 = log_precision as u32;
+
+  // let g1 = xs[skips]; // root of unity x such that x^steps = 1
+  // let log_order_of_g1 = log_steps as u32;
+  // let log_order_of_g2 = log_precision as u32;
 
   // Interpolate the computational trace into a polynomial P, with each step
   // along a successive power of g1
   println!("calculate expanding polynomials");
 
-  let worker = Worker::new();
-
-  let mut k_polynomial = coefficients.ifft(&worker);
+  let mut k_polynomial = coefficients.clone().ifft(&worker);
   k_polynomial.pad_to_size(precision).unwrap();
-  let k_evaluations = k_polynomial.fft(&worker);
+  let k_evaluations = k_polynomial.clone().fft(&worker);
   // let k_polynomial = inv_best_fft(coefficients, &g1, log_order_of_g1); // K(X)
   // let k_evaluations = best_fft(k_polynomial, &g2, log_order_of_g2);
   // println!("k: {:?}", k_evaluations);
   println!("Converted coefficients into a polynomial and low-degree extended it");
 
-  let flag0 = Polynomial::from_values(flag0.to_vec()).unwrap();
-  let mut f0_polynomial = flag0.ifft(&worker);
+  let mut f0_polynomial = Polynomial::from_values(flag0.to_vec())
+    .unwrap()
+    .ifft(&worker);
   f0_polynomial.pad_to_size(precision).unwrap();
-  let f0_evaluations = f0_polynomial.fft(&worker);
+  let f0_evaluations = f0_polynomial.clone().fft(&worker);
   // let f0_polynomial = inv_best_fft(flag0.to_vec(), &g1, log_order_of_g1);
   // let f0_evaluations = best_fft(f0_polynomial.clone(), &g2, log_order_of_g2);
   // println!("f0_evaluations: {:?}", f0_evaluations);
 
-  let flag1 = Polynomial::from_values(flag1.to_vec()).unwrap();
-  let mut f1_polynomial = flag1.ifft(&worker);
+  let mut f1_polynomial = Polynomial::from_values(flag1.to_vec())
+    .unwrap()
+    .ifft(&worker);
   f1_polynomial.pad_to_size(precision).unwrap();
-  let f1_evaluations = f1_polynomial.fft(&worker);
+  let f1_evaluations = f1_polynomial.clone().fft(&worker);
   // let f1_polynomial = inv_best_fft(flag1.to_vec(), &g1, log_order_of_g1);
   // let f1_evaluations = best_fft(f1_polynomial, &g2, log_order_of_g2);
   // println!("f1_evaluations: {:?}", f1_evaluations);
 
-  let flag2 = Polynomial::from_values(flag2.to_vec()).unwrap();
-  let mut f2_polynomial = flag2.ifft(&worker);
+  let mut f2_polynomial = Polynomial::from_values(flag2.to_vec())
+    .unwrap()
+    .ifft(&worker);
   f2_polynomial.pad_to_size(precision).unwrap();
-  let f2_evaluations = f2_polynomial.fft(&worker);
+  let f2_evaluations = f2_polynomial.clone().fft(&worker);
   // let f2_polynomial = inv_best_fft(flag2.to_vec(), &g1, log_order_of_g1);
   // let f2_evaluations = best_fft(f2_polynomial, &g2, log_order_of_g2);
   // println!("f2_evaluations: {:?}", f2_evaluations);
@@ -148,15 +132,15 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
 
   let mut s_polynomial = witness_trace.clone().ifft(&worker);
   s_polynomial.pad_to_size(precision).unwrap();
-  let s_evaluations = s_polynomial.fft(&worker);
+  let s_evaluations = s_polynomial.clone().fft(&worker);
   // let s_polynomial = inv_best_fft(witness_trace.clone(), &g1, log_order_of_g1); // S(X)
   // let s_evaluations = best_fft(s_polynomial, &g2, log_order_of_g2);
   // println!("s_evaluations: {:?}", s_evaluations);
   println!("Converted witness trace into a polynomial and low-degree extended it");
 
-  let mut p_polynomial = computational_trace.ifft(&worker);
+  let mut p_polynomial = computational_trace.clone().ifft(&worker);
   p_polynomial.pad_to_size(precision).unwrap();
-  let p_evaluations = p_polynomial.fft(&worker);
+  let p_evaluations = p_polynomial.clone().fft(&worker);
   // let p_polynomial = inv_best_fft(computational_trace, &g1, log_order_of_g1); // P(X)
   // let p_evaluations = best_fft(p_polynomial, &g2, log_order_of_g2);
   // println!("p_evaluations: {:?}", p_evaluations);
@@ -164,7 +148,7 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
 
   let mut z_polynomial = calc_z_polynomial(steps).unwrap();
   z_polynomial.pad_to_size(precision).unwrap();
-  let z_evaluations = z_polynomial.fft(&worker);
+  let z_evaluations = z_polynomial.clone().fft(&worker);
   // let z_evaluations = best_fft(z_polynomial, &g2, log_order_of_g2);
   // println!("z_evaluations: {:?}", z_evaluations);
   println!("Computed Z polynomial");
@@ -203,7 +187,7 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
     .unwrap()
     .ifft(&worker);
   index_polynomial.pad_to_size(precision).unwrap();
-  let ext_indices = index_polynomial.fft(&worker);
+  let ext_indices = index_polynomial.clone().fft(&worker);
   // let index_polynomial = inv_best_fft(converted_indices, &g1, log_order_of_g1);
   // let ext_indices = best_fft(index_polynomial, &g2, log_order_of_g2);
   println!("Computed extended index polynomial");
@@ -213,7 +197,7 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
     .unwrap()
     .ifft(&worker);
   permuted_polynomial.pad_to_size(precision).unwrap();
-  let ext_permuted_indices = permuted_polynomial.fft(&worker);
+  let ext_permuted_indices = permuted_polynomial.clone().fft(&worker);
   // let permuted_polynomial = inv_best_fft(converted_permuted_indices, &g1, log_order_of_g1);
   // let ext_permuted_indices = best_fft(permuted_polynomial, &g2, log_order_of_g2);
   // println!("ext_permuted_indices: {:?}", ext_permuted_indices);
@@ -232,9 +216,9 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
     skips,
   )
   .unwrap();
-  let mut a_polynomial = a_mini_evaluations.ifft(&worker);
+  let mut a_polynomial = a_mini_evaluations.clone().ifft(&worker);
   a_polynomial.pad_to_size(precision).unwrap();
-  let a_evaluations = a_polynomial.fft(&worker);
+  let a_evaluations = a_polynomial.clone().fft(&worker);
   // let a_polynomials = inv_best_fft(a_mini_evaluations, &g1, log_order_of_g1);
   // let a_evaluations = best_fft(a_polynomials, &g2, log_order_of_g2);
   println!("Computed A polynomial");
@@ -269,24 +253,39 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
   let d3_evaluations = calc_d3_evaluations(&q3_evaluations, &inv_z_evaluations).unwrap();
   println!("Computed D3 polynomial");
 
-  let interpolant2 = calc_i2_polynomial(public_first_indices, &xs, &public_wires, skips).unwrap();
-  let i2_evaluations: Polynomial<T, Values> = Polynomial::from_values(
-    xs.iter()
-      .map(|&x| interpolant2.evaluate_at(&worker, x))
-      .collect(),
-  )
-  .unwrap();
+  let start = std::time::Instant::now();
+  let mut interpolant2 =
+    calc_i2_polynomial(public_first_indices, &xs, &public_wires, skips).unwrap();
+  interpolant2.pad_to_size(precision).unwrap();
+  // let i2_evaluations: Polynomial<T, Values> = Polynomial::from_values(
+  //   xs.iter()
+  //     .map(|&x| interpolant2.evaluate_at(&worker, x))
+  //     .collect(),
+  // )
+  // .unwrap();
+  let i2_evaluations: Polynomial<T, Values> = interpolant2.clone().fft(&worker);
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Computed I2 polynomial: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
+  // println!("Computed I2 polynomial");
 
-  let interpolant3 = calc_i3_polynomial(&xs, skips).unwrap();
-  let i3_evaluations: Polynomial<T, Values> = Polynomial::from_values(
-    xs.iter()
-      .map(|&x| interpolant3.evaluate_at(&worker, x))
-      .collect(),
-  )
-  .unwrap();
-  println!("Computed I polynomial");
+  let mut interpolant3 = calc_i3_polynomial(&xs, skips).unwrap();
+  interpolant3.pad_to_size(precision).unwrap();
+  // let i3_evaluations: Polynomial<T, Values> = Polynomial::from_values(
+  //   xs.iter()
+  //     .map(|&x| interpolant3.evaluate_at(&worker, x))
+  //     .collect(),
+  // )
+  // .unwrap();
+  let i3_evaluations: Polynomial<T, Values> = interpolant3.clone().fft(&worker);
+
+  println!("Computed I3 polynomial");
 
   let zb2_evaluations = calc_zb2_evaluations(&public_first_indices, &xs, precision, skips).unwrap();
+
   let zb3_evaluations = calc_zb3_evaluations(&xs, precision, skips).unwrap();
   println!("Computed Zb polynomial");
 
@@ -302,6 +301,14 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
   println!("Computed B polynomial");
 
   // Compute their Merkle root
+  debug_assert_eq!(p_evaluations.as_ref().len(), precision);
+  debug_assert_eq!(a_evaluations.as_ref().len(), precision);
+  debug_assert_eq!(s_evaluations.as_ref().len(), precision);
+  debug_assert_eq!(d1_evaluations.as_ref().len(), precision);
+  debug_assert_eq!(d2_evaluations.as_ref().len(), precision);
+  debug_assert_eq!(d3_evaluations.as_ref().len(), precision);
+  debug_assert_eq!(b2_evaluations.as_ref().len(), precision);
+  debug_assert_eq!(b3_evaluations.as_ref().len(), precision);
   let poly_evaluations_str = p_evaluations
     .as_ref()
     .iter()
@@ -436,6 +443,7 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
 
   // Return the Merkle roots of P and D, the spot check Merkle proofs,
   // and low-degree proofs of P and D
+  let g2 = xs[1];
   let fri_proof = prove_low_degree::<T, H>(&l_evaluations, g2, precision / 4, skips as u32);
   println!("Computed {} spot checks", SPOT_CHECK_SECURITY_FACTOR);
 

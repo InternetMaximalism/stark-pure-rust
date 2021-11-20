@@ -10,9 +10,11 @@
   "cSpell.words": [
     "Repr",
     "coeff",
+    "coeffs",
     "coord",
     "eval",
     "hasher",
+    "ifft",
     "interp",
     "interpolant",
     "merkle",

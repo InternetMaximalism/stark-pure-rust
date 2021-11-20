@@ -118,15 +118,15 @@ pub fn gen_multi_proofs_multi_core<E: Element, H: Digest>(
   // println!("indices: {:?}", indices);
   assert!(is_a_power_of_2(leaves.len()));
 
-  let start = std::time::Instant::now();
+  // let start = std::time::Instant::now();
   let mut sorted_indices = indices.iter().enumerate().collect::<Vec<_>>().clone();
   sorted_indices.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
-  let end: std::time::Duration = start.elapsed();
-  println!(
-    "Sort leaves: {}.{:03}s",
-    end.as_secs(),
-    end.subsec_nanos() / 1_000_000
-  );
+  // let end: std::time::Duration = start.elapsed();
+  // println!(
+  //   "Sort leaves: {}.{:03}s",
+  //   end.as_secs(),
+  //   end.subsec_nanos() / 1_000_000
+  // );
 
   let start = std::time::Instant::now();
 
@@ -151,7 +151,7 @@ pub fn gen_multi_proofs_multi_core<E: Element, H: Digest>(
 
   let chunks_num = 1 << worker.log_num_cpus();
   let chunk_size = current_nodes.len() / chunks_num;
-  let mut next_indices = vec![None; chunks_num];
+  let mut next_indices: Vec<Option<usize>> = vec![None; chunks_num];
   let mut sub_proofs = current_nodes
     .chunks_mut(chunk_size)
     .zip(next_indices.chunks_mut(1))

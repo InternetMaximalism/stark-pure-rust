@@ -2,7 +2,7 @@
 //   Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 // };
 // use std::io::Error;
-use bellman::plonk::polynomials::{Coefficients, Polynomial, Values};
+use bellman::plonk::polynomials::{Coefficients, Polynomial};
 use bellman::{PrimeField, SynthesisError};
 use ff_utils::ff_utils::ScalarOps;
 use std::cmp::max;
@@ -76,20 +76,27 @@ pub fn multi_inv<T: PrimeField + ScalarOps>(values: &[T]) -> Vec<T> {
 #[test]
 fn test_multi_inv() {
   use ff_utils::f7::F7;
+  use ff_utils::ff_utils::FromBytes;
 
-  let values: Vec<F7> = [1u64, 3, 2, 6, 4, 5].iter().map(|x| F7::from(*x)).collect();
+  let values: Vec<F7> = [1u64, 3, 2, 6, 4, 5]
+    .iter()
+    .map(|x| F7::from_bytes_be(&x.to_be_bytes()).unwrap())
+    .collect();
   let res = multi_inv(&values);
-  let answer: Vec<F7> = [1u64, 5, 4, 6, 2, 3].iter().map(|x| F7::from(*x)).collect();
+  let answer: Vec<F7> = [1u64, 5, 4, 6, 2, 3]
+    .iter()
+    .map(|x| F7::from_bytes_be(&x.to_be_bytes()).unwrap())
+    .collect();
   assert_eq!(res, answer);
 
   let values: Vec<F7> = [0u64, 1, 5, 4, 0, 6, 2, 3, 0]
     .iter()
-    .map(|x| F7::from(*x))
+    .map(|x| F7::from_bytes_be(&x.to_be_bytes()).unwrap())
     .collect();
   let res = multi_inv(&values);
   let answer: Vec<F7> = [0u64, 1, 3, 2, 0, 6, 4, 5, 0]
     .iter()
-    .map(|x| F7::from(*x))
+    .map(|x| F7::from_bytes_be(&x.to_be_bytes()).unwrap())
     .collect();
   assert_eq!(res, answer);
 }
@@ -109,13 +116,17 @@ pub fn eval_poly_at<T: PrimeField + ScalarOps>(polyn: &[T], x: T) -> T {
 #[test]
 fn test_eval_poly_at() {
   use ff_utils::f7::F7;
+  use ff_utils::ff_utils::FromBytes;
 
   // p(x) = 1 + 2x + x^3
-  let p: Vec<F7> = [1u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
-  let x = F7::from(2u64);
+  let p: Vec<F7> = [1u64, 2, 0, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
+  let x = F7::from_bytes_be(&[2u8]).unwrap();
   // p(2) = 1 + 2*2 + 2^3 = 6
   let y = eval_poly_at(&p, x);
-  let answer = F7::from(6u64);
+  let answer = F7::from_bytes_be(&[6u8]).unwrap();
   assert_eq!(y, answer);
 }
 
@@ -130,14 +141,24 @@ pub fn add_polys<T: PrimeField + ScalarOps>(a: &[T], b: &[T]) -> Vec<T> {
 #[test]
 fn test_add_polys() {
   use ff_utils::f7::F7;
+  use ff_utils::ff_utils::FromBytes;
 
   // p1(x) = 4 + 2x + x^3
-  let p1: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  let p1: Vec<F7> = [4u64, 2, 0, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p2(x) = 6 + x + 2x^2
-  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p2: Vec<F7> = [6u64, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p3(x) = 3 + 3x + 2x^2 + x^3
   let p3 = add_polys(&p1, &p2);
-  let answer: Vec<F7> = [3u64, 3, 2, 1].iter().map(|c| F7::from(*c)).collect();
+  let answer: Vec<F7> = [3u64, 3, 2, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   assert_eq!(p3, answer);
 }
 
@@ -152,14 +173,24 @@ pub fn sub_polys<T: PrimeField + ScalarOps>(a: &[T], b: &[T]) -> Vec<T> {
 #[test]
 fn test_sub_polys() {
   use ff_utils::f7::F7;
+  use ff_utils::ff_utils::FromBytes;
 
   // p1(x) = 4 + 2x + x^3
-  let p1: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  let p1: Vec<F7> = [4u64, 2, 0, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p2(x) = 6 + x + 2x^2
-  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p2: Vec<F7> = [6u64, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p3(x) = 5 + x + 5x^2 + x^3
   let p3 = sub_polys(&p1, &p2);
-  let answer: Vec<F7> = [5u64, 1, 5, 1].iter().map(|c| F7::from(*c)).collect();
+  let answer: Vec<F7> = [5u64, 1, 5, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   assert_eq!(p3, answer);
 }
 
@@ -170,13 +201,20 @@ pub fn mul_by_const<T: PrimeField + ScalarOps>(a: &[T], scalar: T) -> Vec<T> {
 #[test]
 fn test_mul_by_const() {
   use ff_utils::f7::F7;
+  use ff_utils::ff_utils::FromBytes;
 
   // p(x) = 4 + 2x + x^3
-  let p: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
-  let scalar = F7::from(5u64);
+  let p: Vec<F7> = [4u64, 2, 0, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
+  let scalar = F7::from_bytes_be(&[5u8]).unwrap();
   // q(x) = 5 * p(x)
   let q = mul_by_const(&p, scalar);
-  let answer: Vec<F7> = [6u64, 3, 0, 5].iter().map(|c| F7::from(*c)).collect();
+  let answer: Vec<F7> = [6u64, 3, 0, 5]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   assert_eq!(q, answer);
 }
 
@@ -192,15 +230,28 @@ pub fn reduction_poly<T: PrimeField + ScalarOps>(a: &[T], n: usize) -> Vec<T> {
 #[test]
 fn test_reduction_poly() {
   use ff_utils::f7::F7;
+  use ff_utils::ff_utils::FromBytes;
 
-  let p: Vec<F7> = [4u64, 2, 0, 1, 3, 2].iter().map(|c| F7::from(*c)).collect();
+  let p: Vec<F7> = [4u64, 2, 0, 1, 3, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   let q = reduction_poly(&p, 4);
-  let answer: Vec<F7> = [0u64, 4, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  let answer: Vec<F7> = [0u64, 4, 0, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   assert_eq!(q, answer);
 
-  let p: Vec<F7> = [4u64, 2].iter().map(|c| F7::from(*c)).collect();
+  let p: Vec<F7> = [4u64, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   let q = reduction_poly(&p, 4);
-  let answer: Vec<F7> = [4u64, 2, 0, 0].iter().map(|c| F7::from(*c)).collect();
+  let answer: Vec<F7> = [4u64, 2, 0, 0]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   assert_eq!(q, answer);
 }
 
@@ -219,14 +270,24 @@ pub fn mul_polys<T: PrimeField + ScalarOps>(a: &[T], b: &[T]) -> Vec<T> {
 #[test]
 fn test_mul_polys_low_degree() {
   use ff_utils::f7::F7;
+  use ff_utils::ff_utils::FromBytes;
 
   // p1(x) = 4 + 2x + x^3
-  let p1: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  let p1: Vec<F7> = [4u64, 2, 0, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p2(x) = 6 + x + 2x^2
-  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p2: Vec<F7> = [6u64, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p3(x) = 3 + 2x + 3x^2 + 3x^3 + 1x^4 + 2x^5
   let p3 = mul_polys(&p1, &p2);
-  let answer: Vec<F7> = [3u64, 2, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let answer: Vec<F7> = [3u64, 2, 3, 3, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   assert_eq!(p3, answer);
 }
 
@@ -270,14 +331,24 @@ pub fn div_polys<T: PrimeField + ScalarOps>(a: &[T], b: &[T]) -> Vec<T> {
 #[test]
 fn test_div_polys_low_degree() {
   use ff_utils::f7::F7;
+  use ff_utils::ff_utils::FromBytes;
 
   // p1(x) = 3 + 2x + 3x^2 + 3x^3 + 1x^4 + 2x^5
-  let p1: Vec<F7> = [3u64, 2, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p1: Vec<F7> = [3u64, 2, 3, 3, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p2(x) = 6 + x + 2x^2
-  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p2: Vec<F7> = [6u64, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p3(x) = 0
   let p3 = div_polys(&p1, &p2);
-  let answer: Vec<F7> = [4u64, 2, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  let answer: Vec<F7> = [4u64, 2, 0, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   assert_eq!(p3, answer);
 }
 
@@ -285,11 +356,18 @@ fn test_div_polys_low_degree() {
 #[should_panic(expected = "assertion failed: a.len() >= b.len()")]
 fn test_panic_div_polys_low_degree() {
   use ff_utils::f7::F7;
+  use ff_utils::ff_utils::FromBytes;
 
   // p1(x) = 3 + 2x + 3x^2 + 3x^3 + 1x^4 + 2x^5
-  let p1: Vec<F7> = [3u64, 2, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p1: Vec<F7> = [3u64, 2, 3, 3, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p2(x) = 6 + x + 2x^2
-  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p2: Vec<F7> = [6u64, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   div_polys(&p2, &p1);
 }
 
@@ -303,32 +381,60 @@ pub fn mod_polys<T: PrimeField + ScalarOps>(a: &[T], b: &[T]) -> Vec<T> {
 #[test]
 fn test_mod_polys_low_degree() {
   use ff_utils::f7::F7;
+  use ff_utils::ff_utils::FromBytes;
 
   // p1(x) = 5 + 4x + 3x^2 + 3x^3 + 1x^4 + 2x^5
-  let p1: Vec<F7> = [5u64, 4, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p1: Vec<F7> = [5u64, 4, 3, 3, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p2(x) = 6 + x + 2x^2
-  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p2: Vec<F7> = [6u64, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p3(x) = 2 + 2x
   let p3 = mod_polys(&p1, &p2);
-  let answer: Vec<F7> = [2u64, 2].iter().map(|c| F7::from(*c)).collect();
+  let answer: Vec<F7> = [2u64, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   assert_eq!(p3, answer);
 
   // p1(x) = 5 + 2x + 3x^2 + 3x^3 + 1x^4 + 2x^5
-  let p1: Vec<F7> = [5u64, 2, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p1: Vec<F7> = [5u64, 2, 3, 3, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p2(x) = 6 + x + 2x^2
-  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p2: Vec<F7> = [6u64, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p3(x) = 0
   let p3 = mod_polys(&p1, &p2);
-  let answer: Vec<F7> = [2u64, 0].iter().map(|c| F7::from(*c)).collect();
+  let answer: Vec<F7> = [2u64, 0]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   assert_eq!(p3, answer);
 
   // p1(x) = 3 + 2x + 3x^2 + 3x^3 + 1x^4 + 2x^5
-  let p1: Vec<F7> = [3u64, 2, 3, 3, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p1: Vec<F7> = [3u64, 2, 3, 3, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p2(x) = 6 + x + 2x^2
-  let p2: Vec<F7> = [6u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
+  let p2: Vec<F7> = [6u64, 1, 2]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   // p3(x) = 0
   let p3 = mod_polys(&p1, &p2);
-  let answer: Vec<F7> = [0u64, 0].iter().map(|c| F7::from(*c)).collect();
+  let answer: Vec<F7> = [0u64, 0]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   assert_eq!(p3, answer);
 }
 
@@ -344,22 +450,26 @@ pub fn sparse<T: PrimeField>(coeff_dict: HashMap<usize, T>) -> Vec<T> {
 #[test]
 fn test_sparse() {
   use ff_utils::f7::F7;
+  use ff_utils::ff_utils::FromBytes;
 
   let mut coeff: HashMap<usize, F7> = HashMap::new();
-  coeff.insert(1usize, F7::from(3u64));
-  coeff.insert(5usize, F7::from(1u64));
+  coeff.insert(1usize, F7::from_bytes_be(&[3u8]).unwrap());
+  coeff.insert(5usize, F7::from_bytes_be(&[1u8]).unwrap());
   let p: Vec<F7> = sparse(coeff);
-  let answer: Vec<F7> = [0u64, 3, 0, 0, 0, 1].iter().map(|c| F7::from(*c)).collect();
+  let answer: Vec<F7> = [0u64, 3, 0, 0, 0, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   assert_eq!(p, answer);
 
   let mut coeff: HashMap<usize, F7> = HashMap::new();
-  coeff.insert(1usize, F7::from(3u64));
-  coeff.insert(5usize, F7::from(1u64));
-  coeff.insert(6usize, F7::from(0u64));
+  coeff.insert(1usize, F7::from_bytes_be(&[3u8]).unwrap());
+  coeff.insert(5usize, F7::from_bytes_be(&[1u8]).unwrap());
+  coeff.insert(6usize, F7::from_bytes_be(&[0u8]).unwrap());
   let p: Vec<F7> = sparse(coeff);
   let answer: Vec<F7> = [0u64, 3, 0, 0, 0, 1, 0]
     .iter()
-    .map(|c| F7::from(*c))
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
     .collect();
   assert_eq!(p, answer);
 }
@@ -381,26 +491,45 @@ pub fn zpoly<T: PrimeField + ScalarOps>(xs: &[T]) -> Vec<T> {
 #[test]
 fn test_zpoly() {
   use ff_utils::f7::F7;
+  use ff_utils::ff_utils::FromBytes;
 
-  let xs: Vec<F7> = [0u64, 1, 2].iter().map(|c| F7::from(*c)).collect();
-  let ys = zpoly(&xs);
-  let answer: Vec<F7> = [0u64, 2, 4, 1].iter().map(|c| F7::from(*c)).collect();
-  assert_eq!(ys, answer);
-
-  let xs: Vec<F7> = [0u64, 3, 3].iter().map(|c| F7::from(*c)).collect();
-  let ys = zpoly(&xs);
-  let answer: Vec<F7> = [0u64, 2, 1, 1].iter().map(|c| F7::from(*c)).collect();
-  assert_eq!(ys, answer);
-
-  let xs: Vec<F7> = [1, 2, 3, 4, 5, 6].iter().map(|c| F7::from(*c)).collect();
-  let ys = zpoly(&xs);
-  let answer: Vec<F7> = [6u64, 0, 0, 0, 0, 0, 1]
+  let xs: Vec<F7> = [0u64, 1, 2]
     .iter()
-    .map(|c| F7::from(*c))
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
+  let ys = zpoly(&xs);
+  let answer: Vec<F7> = [0u64, 2, 4, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
     .collect();
   assert_eq!(ys, answer);
 
-  let xs: Vec<F7> = [1, 3, 2, 6, 5, 4].iter().map(|c| F7::from(*c)).collect();
+  let xs: Vec<F7> = [0u64, 3, 3]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
+  let ys = zpoly(&xs);
+  let answer: Vec<F7> = [0u64, 2, 1, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
+  assert_eq!(ys, answer);
+
+  let xs: Vec<F7> = [1u64, 2, 3, 4, 5, 6]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
+  let ys = zpoly(&xs);
+  let answer: Vec<F7> = [6u64, 0, 0, 0, 0, 0, 1]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
+  assert_eq!(ys, answer);
+
+  let xs: Vec<F7> = [1u64, 3, 2, 6, 5, 4]
+    .iter()
+    .map(|c| F7::from_bytes_be(&c.to_be_bytes()).unwrap())
+    .collect();
   let ys = zpoly(&xs);
   assert_eq!(ys, answer);
 }

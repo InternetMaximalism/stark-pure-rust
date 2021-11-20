@@ -137,74 +137,38 @@ pub struct StarkProof<H: Digest> {
 
 // const modulus = 2**256 - 2**32 * 351 + 1;
 // const non_residue = 7;
-pub const LOG_EXTENSION_FACTOR: usize = 3usize;
+// pub const LOG_EXTENSION_FACTOR: usize = 3usize;
 pub const EXTENSION_FACTOR: usize = 8usize; // >= 4 (for low-degree proof)
 pub const SPOT_CHECK_SECURITY_FACTOR: usize = 80usize;
 
 pub fn calc_max_log_precision<T: PrimeField + ToBytes>() -> u32 {
-  let mut ff_order = T::zero();
-  ff_order.sub_assign(&T::one());
-  let mut ff_order_be = ff_order.to_bytes_be().unwrap();
-  let mut log_max_precision = 0;
-  loop {
-    match ff_order_be.pop() {
-      Some(0) => {
-        log_max_precision += 8;
-      }
-      Some(rem) => {
-        debug_assert!(rem != 0);
-        let mut rem2 = rem;
-        while rem2 % 2 == 0 {
-          log_max_precision += 1;
-          rem2 /= 2;
-        }
-        break;
-      }
-      None => {
-        break;
-      }
-    }
-  }
+  T::S
 
-  log_max_precision
-}
+  // let mut ff_order = T::zero();
+  // ff_order.sub_assign(&T::one());
+  // let mut ff_order_be = ff_order.to_bytes_be().unwrap();
+  // let mut log_max_precision = 0;
+  // loop {
+  //   match ff_order_be.pop() {
+  //     Some(0) => {
+  //       log_max_precision += 8;
+  //     }
+  //     Some(rem) => {
+  //       debug_assert!(rem != 0);
+  //       let mut rem2 = rem;
+  //       while rem2 % 2 == 0 {
+  //         log_max_precision += 1;
+  //         rem2 /= 2;
+  //       }
+  //       break;
+  //     }
+  //     None => {
+  //       break;
+  //     }
+  //   }
+  // }
 
-pub fn expand_root_of_unity<T: PrimeField + ScalarOps>(root_of_unity: T) -> Vec<T> {
-  let mut output = vec![T::one()];
-  let mut current_root = root_of_unity;
-  while current_root != T::one() {
-    output.push(current_root);
-    current_root.mul_assign(&root_of_unity);
-  }
-
-  output
-}
-
-#[test]
-fn test_expand_root_of_unity() {
-  use ff_utils::f7::F7;
-
-  let root_of_unity = F7::multiplicative_generator();
-  let roots_of_unity: Vec<F7> = [1, 3, 2, 6, 4, 5]
-    .iter()
-    .map(|x| F7::from(*x as u64))
-    .collect();
-  let res = expand_root_of_unity(root_of_unity);
-  assert_eq!(res, roots_of_unity);
-
-  use crate::utils::parse_bytes_to_u64_vec;
-  use ff::Field;
-  use ff_utils::ff_utils::ToBytes;
-  use ff_utils::fp::Fp;
-  use num::bigint::BigUint;
-
-  let precision = 65536usize;
-  let times_nmr = BigUint::from_bytes_le(&(Fp::zero() - Fp::one()).to_bytes_le().unwrap());
-  let times_dnm = BigUint::from_bytes_le(&precision.to_le_bytes());
-  let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) /precision
-  let root_of_unity = Fp::multiplicative_generator().pow_vartime(&times);
-  let res = expand_root_of_unity(root_of_unity);
-  assert_eq!(res.len(), precision);
+  // log_max_precision
 }
 
 pub fn convert_usize_iter_to_ff_vec<T: PrimeField + FromBytes, I: IntoIterator<Item = usize>>(
@@ -283,13 +247,7 @@ pub fn calc_q2_evaluations<T: PrimeField + ScalarOps>(
     let q2_of_x = f2 * (c_eval - a_eval * b_eval);
     q2_evaluations.push(q2_of_x);
     // if j % skips == 0 {
-    //   println!(
-    //     "{:?}, {:?}, {:?}, {:?}",
-    //     c_eval - a_eval * b_eval,
-    //     f0,
-    //     f2,
-    //     q2_of_x
-    //   );
+    //   println!("{:?}, {:?}, {:?}", c_eval - a_eval * b_eval, f2, q2_of_x);
     // }
   }
 
@@ -444,7 +402,7 @@ pub fn calc_d1_evaluations<T: PrimeField + ScalarOps>(
       .enumerate()
       .map(|(pos, (&q, &z))| {
         if z == T::zero() {
-          assert_eq!(q, T::zero(), "invalid D1: {:?} {:?} {:?}", pos, q, z);
+          assert_eq!(q, z, "invalid D1: {:?}", pos);
         }
         q * z
       })
@@ -466,7 +424,7 @@ pub fn calc_d2_evaluations<T: PrimeField + ScalarOps>(
       .enumerate()
       .map(|(pos, (&q, &z))| {
         if z == T::zero() {
-          assert_eq!(q, T::zero(), "invalid D2: {:?} {:?} {:?}", pos, q, z);
+          assert_eq!(q, z, "invalid D2: {:?}", pos);
         }
         q * z
       })
@@ -488,7 +446,7 @@ pub fn calc_d3_evaluations<T: PrimeField + ScalarOps>(
       .enumerate()
       .map(|(pos, (&q, &z))| {
         if z == T::zero() {
-          assert_eq!(q, T::zero(), "invalid D3: {:?} {:?} {:?}", pos, q, z);
+          assert_eq!(q, z, "invalid D3: {:?}", pos);
         }
         q * z
       })
@@ -576,11 +534,11 @@ pub fn calc_b2_evaluations<T: PrimeField + ScalarOps>(
       .zip(i2_evaluations)
       .zip(inv_zb2_evaluations)
       .enumerate()
-      .map(|(pos, ((&zb, &i), &inv_zb))| {
-        if zb == T::zero() {
-          assert_eq!(zb, i, "invalid B2: {:?} {:?} {:?}", pos, zb, i);
+      .map(|(pos, ((&s, &i), &inv_zb))| {
+        if inv_zb == T::zero() {
+          assert_eq!(s, i, "invalid B2: {:?}", pos);
         }
-        (zb - i) * inv_zb
+        (s - i) * inv_zb
       })
       .collect(),
   )
@@ -601,11 +559,11 @@ pub fn calc_b3_evaluations<T: PrimeField + ScalarOps>(
       .zip(i3_evaluations)
       .zip(inv_zb3_evaluations)
       .enumerate()
-      .map(|(pos, ((&zb, &i), &inv_zb))| {
-        if zb == T::zero() {
-          assert_eq!(zb, i, "invalid B3: {:?} {:?} {:?}", pos, zb, i);
+      .map(|(pos, ((&a, &i), &inv_zb))| {
+        if inv_zb == T::zero() {
+          assert_eq!(a, i, "invalid B3: {:?}", pos);
         }
-        (zb - i) * inv_zb
+        (a - i) * inv_zb
       })
       .collect(),
   )

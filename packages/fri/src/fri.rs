@@ -1,5 +1,5 @@
 use crate::interpolation::{eval_quartic, interpolate, multi_interp_4};
-use crate::utils::get_pseudorandom_indices;
+use crate::utils::{expand_root_of_unity, get_pseudorandom_indices};
 
 use bellman::plonk::polynomials::Polynomial;
 use bellman::worker::Worker;
@@ -23,44 +23,6 @@ pub enum FriProof<H: Digest> {
     column_branches: Vec<Proof<Vec<u8>, H>>,
     poly_branches: Vec<Proof<Vec<u8>, H>>,
   },
-}
-
-pub fn expand_root_of_unity<T: PrimeField>(root_of_unity: T) -> Vec<T> {
-  let mut output = vec![T::one()];
-  let mut current_root = root_of_unity;
-  while current_root != T::one() {
-    output.push(current_root);
-    current_root.mul_assign(&root_of_unity);
-  }
-
-  output
-}
-
-#[test]
-fn test_expand_root_of_unity() {
-  use ff_utils::f7::F7;
-
-  let root_of_unity = F7::multiplicative_generator();
-  let roots_of_unity: Vec<F7> = [1, 3, 2, 6, 4, 5]
-    .iter()
-    .map(|x| F7::from(*x as u64))
-    .collect();
-  let res = expand_root_of_unity(root_of_unity);
-  assert_eq!(res, roots_of_unity);
-
-  use crate::utils::parse_bytes_to_u64_vec;
-  use ff::Field;
-  use ff_utils::ff_utils::ToBytes;
-  use ff_utils::fp::Fp;
-  use num::bigint::BigUint;
-
-  let precision = 65536usize;
-  let times_nmr = BigUint::from_bytes_le(&(Fp::zero() - Fp::one()).to_bytes_le().unwrap());
-  let times_dnm = BigUint::from_bytes_le(&precision.to_le_bytes());
-  let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) /precision
-  let root_of_unity = Fp::multiplicative_generator().pow(&times);
-  let res = expand_root_of_unity(root_of_unity);
-  assert_eq!(res.len(), precision);
 }
 
 pub fn prove_low_degree_directly<T: PrimeField + FromBytes + ToBytes + ScalarOps, H: Digest>(
@@ -119,7 +81,13 @@ fn prove_low_degree_rec<T: PrimeField + FromBytes + ToBytes + ScalarOps, H: Dige
   );
 
   // Calculate the set of x coordinates
-  let xs = expand_root_of_unity(root_of_unity);
+  // let xs = expand_root_of_unity(root_of_unity);
+  let xs = {
+    let coeffs = vec![T::one(); values.len()];
+    let mut polyn = Polynomial::from_coeffs(coeffs).unwrap();
+    polyn.distribute_powers(&worker, root_of_unity);
+    polyn.into_coeffs()
+  };
 
   // If the degree we are checking for is less than or equal to 32,
   // use the polynomial directly as a proof

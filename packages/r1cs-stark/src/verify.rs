@@ -1,4 +1,4 @@
-use bellman::plonk::polynomials::{Coefficients, Polynomial};
+use bellman::plonk::polynomials::Polynomial;
 use bellman::worker::Worker;
 use bellman::PrimeField;
 use commitment::hash::Digest;
@@ -6,11 +6,10 @@ use commitment::merkle_tree::verify_multi_branch;
 use ff_utils::ff_utils::{FromBytes, ScalarOps, ToBytes};
 use fri::{
   fri::verify_low_degree_proof,
-  utils::{get_pseudorandom_indices, parse_bytes_to_u64_vec},
+  utils::{get_powers, get_pseudorandom_indices, parse_bytes_to_u64_vec},
 };
 #[allow(unused_imports)]
 use log::{debug, info};
-use num::bigint::BigUint;
 use std::io::Error;
 
 use crate::utils::*;
@@ -27,6 +26,8 @@ pub fn verify_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Dig
   n_constraints: usize,
   n_wires: usize,
 ) -> Result<bool, Error> {
+  let worker = Worker::new();
+
   let original_steps = coefficients.len();
   assert!(original_steps <= 3 * n_constraints * n_wires);
   assert!(original_steps % 3 == 0);
@@ -38,7 +39,7 @@ pub fn verify_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Dig
   }
 
   let precision = steps * EXTENSION_FACTOR;
-  let log_precision = log_steps + LOG_EXTENSION_FACTOR as u32;
+  // let log_precision = log_steps + LOG_EXTENSION_FACTOR as u32;
   let log_max_precision = calc_max_log_precision::<T>();
   assert!(precision <= 2usize.pow(log_max_precision));
 
@@ -60,26 +61,12 @@ pub fn verify_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Dig
     fri_proof,
   } = proof;
 
-  // Get (steps)th root of unity
-  let ff_order = T::zero() - T::one();
-  let times_nmr = BigUint::from_bytes_le(&ff_order.to_bytes_le().unwrap());
-  let times_dnm = BigUint::from_bytes_le(&precision.to_le_bytes());
-  assert!(&times_nmr % &times_dnm == BigUint::from(0u8));
-  let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) / precision
-  let g2 = T::multiplicative_generator().pow(&times); // g2^precision = 1 mod modulus
-
-  // let xs = expand_root_of_unity(g2);
-  let worker = Worker::new();
-  let xs = {
-    let coeffs = vec![T::zero(); precision];
-    let mut xs = Polynomial::from_coeffs(coeffs).unwrap();
-    xs.distribute_powers(&worker, g2);
-    xs.into_coeffs()
-  };
+  let xs = get_powers(precision, &worker).unwrap().into_coeffs();
   let skips = precision / steps; // EXTENSION_FACTOR
-  let g1 = xs[skips];
-  let log_order_of_g1 = log_steps as u32;
-  let log_order_of_g2 = log_precision as u32;
+
+  // let g1 = xs[skips];
+  // let log_order_of_g1 = log_steps as u32;
+  // let log_order_of_g2 = log_precision as u32;
 
   // Interpolate the computational trace into a polynomial P, with each step
   // along a successive power of g1
@@ -87,18 +74,26 @@ pub fn verify_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Dig
 
   let worker = Worker::new();
 
-  let k_polynomial = coefficients.ifft(&worker);
+  let k_polynomial = coefficients.clone().ifft(&worker);
+  // k_polynomial.pad_to_size(precision).unwrap();
   println!("Converted coefficients into a polynomial and low-degree extended it");
 
-  let flag0 = Polynomial::from_values(flag0.to_vec()).unwrap();
-  let f0_polynomial = flag0.ifft(&worker);
-  let flag1 = Polynomial::from_values(flag1.to_vec()).unwrap();
-  let f1_polynomial = flag1.ifft(&worker);
-  let flag2 = Polynomial::from_values(flag2.to_vec()).unwrap();
-  let f2_polynomial = flag2.ifft(&worker);
+  let f0_polynomial = Polynomial::from_values(flag0.to_vec())
+    .unwrap()
+    .ifft(&worker);
+  // f0_polynomial.pad_to_size(precision).unwrap();
+  let f1_polynomial = Polynomial::from_values(flag1.to_vec())
+    .unwrap()
+    .ifft(&worker);
+  // f1_polynomial.pad_to_size(precision).unwrap();
+  let f2_polynomial = Polynomial::from_values(flag2.to_vec())
+    .unwrap()
+    .ifft(&worker);
+  // f2_polynomial.pad_to_size(precision).unwrap();
   println!("Converted flags into a polynomial and low-degree extended it");
 
   // Verifies the low-degree proofs
+  let g2 = xs[1];
   assert!(
     verify_low_degree_proof(l_root.clone(), g2, &fri_proof, precision / 4, skips as u32).unwrap()
   );
@@ -139,7 +134,7 @@ pub fn verify_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Dig
 
   let mut z_polynomial = calc_z_polynomial(steps).unwrap();
   z_polynomial.pad_to_size(precision).unwrap();
-  let z_evaluations = z_polynomial.fft(&worker);
+  let z_evaluations = z_polynomial.clone().fft(&worker);
 
   // let z3_polynomial = calc_z_polynomial(steps);
   // let z3_evaluations = best_fft(z3_polynomial, &g2, log_order_of_g2);
@@ -149,7 +144,7 @@ pub fn verify_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Dig
     .unwrap()
     .ifft(&worker);
   index_polynomial.pad_to_size(precision).unwrap();
-  let ext_indices = index_polynomial.fft(&worker);
+  let ext_indices = index_polynomial.clone().fft(&worker);
   println!("Computed extended index polynomial");
 
   let converted_permuted_indices: Vec<T> = convert_usize_iter_to_ff_vec(permuted_indices.clone());
@@ -157,7 +152,7 @@ pub fn verify_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Dig
     .unwrap()
     .ifft(&worker);
   permuted_polynomial.pad_to_size(precision).unwrap();
-  let ext_permuted_indices = permuted_polynomial.fft(&worker);
+  let ext_permuted_indices = permuted_polynomial.clone().fft(&worker);
   // println!("ext_permuted_indices: {:?}", ext_permuted_indices);
   println!("Computed extended permuted index polynomial");
 

@@ -1,4 +1,10 @@
+use bellman::plonk::domains::Domain;
+use bellman::plonk::polynomials::{Polynomial, Values};
+use bellman::worker::Worker;
+use bellman::SynthesisError;
 use blake2::{Blake2s, Digest};
+use ff_utils::ff_utils::ScalarOps;
+use ff_utils::{ff::PrimeField, ff_utils::ToBytes};
 use std::cmp::min;
 use std::convert::TryInto;
 
@@ -149,4 +155,62 @@ fn test_parse_bytes_to_u64_vec() {
   let res = parse_bytes_to_u64_vec(xs);
   let answer = &[257u64, 255u64];
   assert_eq!(&res, answer);
+}
+
+pub fn expand_root_of_unity<T: PrimeField>(root_of_unity: T) -> Vec<T> {
+  let mut output = vec![T::one()];
+  let mut current_root = root_of_unity;
+  while current_root != T::one() {
+    output.push(current_root);
+    current_root.mul_assign(&root_of_unity);
+  }
+
+  output
+}
+
+pub fn get_powers<T: PrimeField + ScalarOps + ToBytes>(
+  size: usize,
+  worker: &Worker,
+) -> Result<Polynomial<T, Values>, SynthesisError> {
+  let domain = Domain::new_for_size(size as u64)?;
+  let omega = domain.generator; // omega^coeffs_len = 1 mod modulus
+  let mut powers = Polynomial::from_values(vec![T::one(); size])?;
+  powers.distribute_powers(&worker, omega);
+
+  // let mut coeffs = vec![T::zero(); size];
+  // coeffs[1] = T::one(); // P(X) = X
+  // let powers = Polynomial::from_coeffs(coeffs)?.fft(&worker);
+
+  Ok(powers)
+}
+
+#[test]
+fn test_expand_root_of_unity() {
+  use ff_utils::f7::F7;
+
+  let root_of_unity = F7::multiplicative_generator();
+  let roots_of_unity: Vec<F7> = [1u8, 3, 2, 6, 4, 5]
+    .iter()
+    .map(|x| F7::from_bytes_be(&x.to_be_bytes()).unwrap())
+    .collect();
+  let res = expand_root_of_unity(root_of_unity);
+  assert_eq!(res, roots_of_unity);
+
+  use bellman::Field;
+  use ff_utils::ff_utils::ToBytes;
+  use ff_utils::fp::Fp;
+  use fri::utils::parse_bytes_to_u64_vec;
+  use num::bigint::BigUint;
+
+  let precision = 65536usize;
+  let times_nmr = BigUint::from_bytes_le(
+    &(Fp::from_bytes_be(&[0]).unwrap() - Fp::from_bytes_be(&[1]).unwrap())
+      .to_bytes_le()
+      .unwrap(),
+  );
+  let times_dnm = BigUint::from_bytes_le(&precision.to_le_bytes());
+  let times = parse_bytes_to_u64_vec(&(times_nmr / times_dnm).to_bytes_le()); // (modulus - 1) /precision
+  let root_of_unity = Fp::multiplicative_generator().pow(&times);
+  let res = expand_root_of_unity(root_of_unity);
+  assert_eq!(res.len(), precision);
 }
