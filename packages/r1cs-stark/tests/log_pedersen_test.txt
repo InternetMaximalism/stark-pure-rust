@@ -1,0 +1,158 @@
+n_constraints: 1996
+n_wires: 1997
+n_public_wires: 2 + 2
+n_labels: 13109
+Generate coefficients
+Generated coefficients: 1.356s
+Generated flags: 0.002s
+a_trace_len: 7852
+permuted_indices
+Generated permuted_indices: 0.001s
+public_first_indices
+Generated public_first_indices: 0.000s
+original_steps: 23556
+precision: 262144
+original_steps * skips 188448
+max_precision: 2^28
+Generated expand root of unity: 0.071s
+calculate expanding polynomials
+Converted coefficients into a polynomial and low-degree extended it
+Converted flags into a polynomial and low-degree extended it
+Converted witness trace into a polynomial and low-degree extended it
+Converted computational trace into a polynomial and low-degree extended it
+Computed Z polynomial
+Computed Q1 polynomial
+Computed Q2 polynomial
+Computed extended index polynomial
+Computed extended permuted index polynomial
+Collect leaves: 0.825s
+Calculated tree: 0.815s
+Computed A polynomial
+Computed Q3 polynomial
+Computed D1 polynomial
+Computed D2 polynomial
+Computed D3 polynomial
+Computed I2 polynomial: 1.393s
+Computed I3 polynomial
+Computed Zb polynomial
+Computed B polynomial
+Compute Merkle tree for the plain evaluations
+Collect leaves: 14.388s
+Calculated tree: 6.525s
+Computed Merkle root for the plain evaluations
+Collect leaves: 6.671s
+Calculated tree: 6.542s
+Computed Merkle root for the linear combination of evaluations
+Collect leaves: 6.452s
+Calculated tree: 6.509s
+Computed Merkle branch for the linear combination of evaluations
+Collect leaves: 14.315s
+Calculated tree: 6.543s
+Computed Merkle branch for the plain evaluations
+Proving 262144 values are degree <= 65536
+Collect leaves: 6.633s
+Calculated tree: 6.523s
+Collect leaves: 1.657s
+Calculated tree: 1.628s
+Collect leaves: 1.623s
+Calculated tree: 1.669s
+Collect leaves: 6.608s
+Calculated tree: 6.678s
+Proving 65536 values are degree <= 16384
+Collect leaves: 1.703s
+Calculated tree: 1.658s
+Collect leaves: 0.420s
+Calculated tree: 0.416s
+Collect leaves: 0.406s
+Calculated tree: 0.413s
+Collect leaves: 1.626s
+Calculated tree: 1.658s
+Proving 16384 values are degree <= 4096
+Collect leaves: 0.451s
+Calculated tree: 0.431s
+Collect leaves: 0.104s
+Calculated tree: 0.103s
+Collect leaves: 0.103s
+Calculated tree: 0.106s
+Collect leaves: 0.420s
+Calculated tree: 0.416s
+Proving 4096 values are degree <= 1024
+Collect leaves: 0.103s
+Calculated tree: 0.103s
+Collect leaves: 0.025s
+Calculated tree: 0.025s
+Collect leaves: 0.025s
+Calculated tree: 0.026s
+Collect leaves: 0.102s
+Calculated tree: 0.105s
+Proving 1024 values are degree <= 256
+Collect leaves: 0.026s
+Calculated tree: 0.026s
+Collect leaves: 0.006s
+Calculated tree: 0.006s
+Collect leaves: 0.006s
+Calculated tree: 0.006s
+Collect leaves: 0.025s
+Calculated tree: 0.027s
+Proving 256 values are degree <= 64
+Collect leaves: 0.007s
+Calculated tree: 0.006s
+Collect leaves: 0.001s
+Calculated tree: 0.001s
+Collect leaves: 0.001s
+Calculated tree: 0.001s
+Collect leaves: 0.006s
+Calculated tree: 0.007s
+Proving 64 values are degree <= 16
+Produced FRI proof
+Computed 80 spot checks
+Generate coefficients
+Generate flags
+permuted_indices
+public_first_indices
+calculate expanding polynomials
+Converted coefficients into a polynomial and low-degree extended it
+Converted flags into a polynomial and low-degree extended it
+Verifying degree <= 65536
+Verifying degree <= 16384
+Verifying degree <= 4096
+Verifying degree <= 1024
+Verifying degree <= 256
+Verifying degree <= 64
+Verifying degree <= 16
+Collect leaves: 0.001s
+Calculated tree: 0.001s
+FRI proof verified
+Computed extended index polynomial
+Computed extended permuted index polynomial
+Computed boundary polynomial
+Verified 80 consistency checks
+Done proof verification
+reports: Report {
+    timestamp: SystemTime {
+        tv_sec: 1637504095,
+        tv_nsec: 23174168,
+    },
+    duration: 202.386762216s,
+    start_time: SystemTime {
+        tv_sec: 1637503892,
+        tv_nsec: 641823796,
+    },
+    system_uptime: 16965.23s,
+    global_cpu_usage: 23.90846,
+    process_cpu_usage: 142.35881,
+    gross_cpu_usage: 142.35881,
+    memory_rss: 378916864,
+    memory_virtual: 3582398464,
+    memory_swap: 0,
+    memory_rss_peak: 378916864,
+    memory_virtual_peak: 3979706368,
+    memory_swap_peak: 0,
+    disk_read: 0.0,
+    disk_write: 0.0,
+    disk_cancelled: 0.0,
+    io_read: 3382.924,
+    io_write: 15424.754,
+    io_read_ops: 0.28657544,
+    io_write_ops: 20.386383,
+}

@@ -1112,6 +1112,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "quick-error"
+version = "1.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
+
+[[package]]
 name = "quote"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1148,6 +1154,7 @@ dependencies = [
  "log",
  "num 0.4.0",
  "num_cpus",
+ "self-meter",
  "serde",
  "serde_json",
  "simplelog",
@@ -1294,6 +1301,19 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
+
+[[package]]
+name = "self-meter"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f5db5de2ab21bed9d4cde060886b4fdbee58a9d8a95c8becc7ea549a7ba8bc8"
+dependencies = [
+ "libc",
+ "num_cpus",
+ "quick-error",
+ "serde",
+ "serde_derive",
+]
 
 [[package]]
 name = "serde"

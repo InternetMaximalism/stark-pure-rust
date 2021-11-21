@@ -1,0 +1,108 @@
+n_constraints: 3
+n_wires: 5
+n_public_wires: 1 + 1
+n_labels: 5
+Generate coefficients
+Generated coefficients: 0.000s
+Generated flags: 0.000s
+a_trace_len: 5
+permuted_indices
+Generated permuted_indices: 0.000s
+public_first_indices
+Generated public_first_indices: 0.000s
+original_steps: 15
+precision: 128
+original_steps * skips 120
+max_precision: 2^28
+Generated expand root of unity: 0.002s
+calculate expanding polynomials
+Converted coefficients into a polynomial and low-degree extended it
+Converted flags into a polynomial and low-degree extended it
+Converted witness trace into a polynomial and low-degree extended it
+Converted computational trace into a polynomial and low-degree extended it
+Computed Z polynomial
+Computed Q1 polynomial
+Computed Q2 polynomial
+Computed extended index polynomial
+Computed extended permuted index polynomial
+Collect leaves: 0.000s
+Calculated tree: 0.000s
+Computed A polynomial
+Computed Q3 polynomial
+Computed D1 polynomial
+Computed D2 polynomial
+Computed D3 polynomial
+Computed I2 polynomial: 0.005s
+Computed I3 polynomial
+Computed Zb polynomial
+Computed B polynomial
+Compute Merkle tree for the plain evaluations
+Collect leaves: 0.007s
+Calculated tree: 0.003s
+Computed Merkle root for the plain evaluations
+Collect leaves: 0.003s
+Calculated tree: 0.003s
+Computed Merkle root for the linear combination of evaluations
+Collect leaves: 0.003s
+Calculated tree: 0.003s
+Computed Merkle branch for the linear combination of evaluations
+Collect leaves: 0.007s
+Calculated tree: 0.004s
+Computed Merkle branch for the plain evaluations
+Proving 128 values are degree <= 32
+Collect leaves: 0.004s
+Calculated tree: 0.003s
+Collect leaves: 0.000s
+Calculated tree: 0.001s
+Collect leaves: 0.000s
+Calculated tree: 0.000s
+Collect leaves: 0.003s
+Calculated tree: 0.003s
+Proving 32 values are degree <= 8
+Produced FRI proof
+Computed 80 spot checks
+Generate coefficients
+Generate flags
+permuted_indices
+public_first_indices
+calculate expanding polynomials
+Converted coefficients into a polynomial and low-degree extended it
+Converted flags into a polynomial and low-degree extended it
+Verifying degree <= 32
+Verifying degree <= 8
+Collect leaves: 0.000s
+Calculated tree: 0.000s
+FRI proof verified
+Computed extended index polynomial
+Computed extended permuted index polynomial
+Computed boundary polynomial
+Verified 80 consistency checks
+Done proof verification
+reports: Report {
+    timestamp: SystemTime {
+        tv_sec: 1637488180,
+        tv_nsec: 310265552,
+    },
+    duration: 954.662542ms,
+    start_time: SystemTime {
+        tv_sec: 1637488179,
+        tv_nsec: 351959427,
+    },
+    system_uptime: 1049.87s,
+    global_cpu_usage: 20.526314,
+    process_cpu_usage: 127.36842,
+    gross_cpu_usage: 127.36842,
+    memory_rss: 5128192,
+    memory_virtual: 2663280640,
+    memory_swap: 0,
+    memory_rss_peak: 5128192,
+    memory_virtual_peak: 2712408064,
+    memory_swap_peak: 0,
+    disk_read: 0.0,
+    disk_write: 0.0,
+    disk_cancelled: 0.0,
+    io_read: 25349.475,
+    io_write: 864406.3,
+    io_read_ops: 40.0,
+    io_write_ops: 96.84211,
+}

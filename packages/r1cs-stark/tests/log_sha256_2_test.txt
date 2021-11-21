@@ -1,0 +1,161 @@
+n_constraints: 30134
+n_wires: 29823
+n_public_wires: 0 + 1
+n_labels: 204154
+Generate coefficients
+Generated coefficients: 32.643s
+Generated flags: 0.075s
+a_trace_len: 201083
+permuted_indices
+Generated permuted_indices: 0.040s
+public_first_indices
+Generated public_first_indices: 0.000s
+original_steps: 603249
+precision: 8388608
+original_steps * skips 4825992
+max_precision: 2^28
+Generated expand root of unity: 2.386s
+calculate expanding polynomials
+Converted coefficients into a polynomial and low-degree extended it
+Converted flags into a polynomial and low-degree extended it
+Converted witness trace into a polynomial and low-degree extended it
+Converted computational trace into a polynomial and low-degree extended it
+Computed Z polynomial
+Computed Q1 polynomial
+Computed Q2 polynomial
+Computed extended index polynomial
+Computed extended permuted index polynomial
+Collect leaves: 39.625s
+Calculated tree: 39.408s
+Computed A polynomial
+Computed Q3 polynomial
+Computed D1 polynomial
+Computed D2 polynomial
+Computed D3 polynomial
+Computed I2 polynomial: 75.274s
+Computed I3 polynomial
+Computed Zb polynomial
+Computed B polynomial
+Compute Merkle tree for the plain evaluations
+Collect leaves: 632.384s
+Calculated tree: 318.773s
+Computed Merkle root for the plain evaluations
+Collect leaves: 322.401s
+Calculated tree: 318.510s
+Computed Merkle root for the linear combination of evaluations
+Collect leaves: 312.680s
+Calculated tree: 318.029s
+Computed Merkle branch for the linear combination of evaluations
+Collect leaves: 624.113s
+Calculated tree: 317.922s
+Computed Merkle branch for the plain evaluations
+Proving 8388608 values are degree <= 2097152
+Collect leaves: 322.093s
+Calculated tree: 318.879s
+Collect leaves: 80.450s
+Calculated tree: 79.287s
+Collect leaves: 77.742s
+Calculated tree: 79.414s
+Collect leaves: 312.432s
+Calculated tree: 316.839s
+Proving 2097152 values are degree <= 524288
+Collect leaves: 80.086s
+Calculated tree: 79.109s
+Collect leaves: 20.135s
+Calculated tree: 19.840s
+Collect leaves: 19.462s
+Calculated tree: 19.770s
+Collect leaves: 78.070s
+Calculated tree: 79.056s
+Proving 524288 values are degree <= 131072
+Collect leaves: 20.090s
+Calculated tree: 19.816s
+Collect leaves: 5.001s
+Calculated tree: 4.934s
+Collect leaves: 4.855s
+Calculated tree: 4.932s
+Collect leaves: 19.489s
+Calculated tree: 19.729s
+Proving 131072 values are degree <= 32768
+Collect leaves: 4.997s
+Calculated tree: 4.931s
+Collect leaves: 1.254s
+Calculated tree: 1.231s
+Collect leaves: 1.212s
+Calculated tree: 1.228s
+Collect leaves: 4.874s
+Calculated tree: 4.980s
+Proving 32768 values are degree <= 8192
+Collect leaves: 1.267s
+Calculated tree: 1.235s
+Collect leaves: 0.319s
+Calculated tree: 0.308s
+Collect leaves: 0.303s
+Calculated tree: 0.307s
+Collect leaves: 1.215s
+Calculated tree: 1.233s
+Proving 8192 values are degree <= 2048
+Collect leaves: 0.312s
+Calculated tree: 0.306s
+Collect leaves: 0.077s
+Calculated tree: 0.076s
+Collect leaves: 0.075s
+Calculated tree: 0.077s
+Collect leaves: 0.303s
+Calculated tree: 0.308s
+Proving 2048 values are degree <= 512
+Collect leaves: 0.077s
+Calculated tree: 0.076s
+Collect leaves: 0.020s
+Calculated tree: 0.019s
+Collect leaves: 0.018s
+Calculated tree: 0.019s
+Collect leaves: 0.075s
+Calculated tree: 0.078s
+Proving 512 values are degree <= 128
+Collect leaves: 0.019s
+Calculated tree: 0.019s
+Collect leaves: 0.004s
+Calculated tree: 0.004s
+Collect leaves: 0.004s
+Calculated tree: 0.004s
+Collect leaves: 0.018s
+Calculated tree: 0.019s
+Proving 128 values are degree <= 32
+Collect leaves: 0.004s
+Calculated tree: 0.004s
+Collect leaves: 0.001s
+Calculated tree: 0.001s
+Collect leaves: 0.001s
+Calculated tree: 0.001s
+Collect leaves: 0.004s
+Calculated tree: 0.005s
+Proving 32 values are degree <= 8
+Produced FRI proof
+Computed 80 spot checks
+Generate coefficients
+Generate flags
+permuted_indices
+public_first_indices
+calculate expanding polynomials
+Converted coefficients into a polynomial and low-degree extended it
+Converted flags into a polynomial and low-degree extended it
+Verifying degree <= 2097152
+Verifying degree <= 524288
+Verifying degree <= 131072
+Verifying degree <= 32768
+Verifying degree <= 8192
+Verifying degree <= 2048
+Verifying degree <= 512
+Verifying degree <= 128
+Verifying degree <= 32
+Verifying degree <= 8
+Collect leaves: 0.001s
+Calculated tree: 0.001s
+FRI proof verified
+Computed extended index polynomial
+Computed extended permuted index polynomial
+Computed boundary polynomial
+Verified 80 consistency checks
+Done proof verification
+Executed R1CS STARK: 9520.301s
