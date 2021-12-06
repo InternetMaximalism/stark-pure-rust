@@ -146,12 +146,19 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
   // println!("p_evaluations: {:?}", p_evaluations);
   println!("Converted computational trace into a polynomial and low-degree extended it");
 
+  let start = std::time::Instant::now();
   let mut z_polynomial = calc_z_polynomial(steps).unwrap();
   z_polynomial.pad_to_size(precision).unwrap();
   let z_evaluations = z_polynomial.clone().fft(&worker);
   // let z_evaluations = best_fft(z_polynomial, &g2, log_order_of_g2);
   // println!("z_evaluations: {:?}", z_evaluations);
-  println!("Computed Z polynomial");
+  // println!("Computed Z polynomial");
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Computed Z polynomial: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
 
   let q1_evaluations = calc_q1_evaluations(
     &s_evaluations,
@@ -179,6 +186,7 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
   // println!("q2_evaluations: {:?}", q2_evaluations);
   println!("Computed Q2 polynomial");
 
+  let start = std::time::Instant::now();
   // let converted_indices = (0..steps)
   //   .map(|v| T::from_bytes_le(v.to_le_bytes().as_ref()).unwrap())
   //   .collect::<Vec<_>>();
@@ -190,8 +198,15 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
   let ext_indices = index_polynomial.clone().fft(&worker);
   // let index_polynomial = inv_best_fft(converted_indices, &g1, log_order_of_g1);
   // let ext_indices = best_fft(index_polynomial, &g2, log_order_of_g2);
-  println!("Computed extended index polynomial");
+  // println!("Computed extended index polynomial");
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Computed extended index polynomial: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
 
+  let start = std::time::Instant::now();
   let converted_permuted_indices = convert_usize_iter_to_ff_vec(permuted_indices.clone());
   let mut permuted_polynomial = Polynomial::from_values(converted_permuted_indices)
     .unwrap()
@@ -201,8 +216,15 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
   // let permuted_polynomial = inv_best_fft(converted_permuted_indices, &g1, log_order_of_g1);
   // let ext_permuted_indices = best_fft(permuted_polynomial, &g2, log_order_of_g2);
   // println!("ext_permuted_indices: {:?}", ext_permuted_indices);
-  println!("Computed extended permuted index polynomial");
+  // println!("Computed extended permuted index polynomial");
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Computed extended permuted index polynomial: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
 
+  let start = std::time::Instant::now();
   let a_root: H = get_accumulator_tree_root(&permuted_indices, &witness_trace);
   let r: Vec<T> = get_random_ff_values(a_root.as_ref(), precision as u32, 3, 0);
   // println!("r: {:?}", r);
@@ -221,7 +243,13 @@ pub fn mk_r1cs_proof<T: PrimeField + ScalarOps + FromBytes + ToBytes, H: Digest>
   let a_evaluations = a_polynomial.clone().fft(&worker);
   // let a_polynomials = inv_best_fft(a_mini_evaluations, &g1, log_order_of_g1);
   // let a_evaluations = best_fft(a_polynomials, &g2, log_order_of_g2);
-  println!("Computed A polynomial");
+  // println!("Computed A polynomial");
+  let end: std::time::Duration = start.elapsed();
+  println!(
+    "Computed A polynomial: {}.{:03}s",
+    end.as_secs(),
+    end.subsec_nanos() / 1_000_000
+  );
 
   // let z3_polynomial = calc_z_polynomial(steps);
   // let z3_evaluations = best_fft(z3_polynomial, &g2, log_order_of_g2);
