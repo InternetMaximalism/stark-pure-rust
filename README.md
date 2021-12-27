@@ -4,9 +4,46 @@
 
 ## How to Use
 
-- [r1cs-stark](packages/r1cs-stark/README.md)
+First, Install [Rust](https://www.rust-lang.org/tools/install) (cargo version >= 1.56.0).
 
-- [r1cs-stark-node-api](packages/napi/README.md)
+```sh
+cd packages/r1cs-stark
+CIRCUIT_NAME="compute"
+RUST_BACKTRACE=1 cargo run ./tests/${CIRCUIT_NAME}.r1cs ./tests/${CIRCUIT_NAME}.wtns ./tests/${CIRCUIT_NAME}_proof.json
+```
+
+`CIRCUIT_NAME` allows following values.
+
+- `compute`
+- `bits`
+- `pedersen_test`
+- `poseidon3_test`
+- `sha256_2_test`
+
+## Test with Docker
+
+If your machine is not Linux, we can use this method to measure memory loads.
+
+### build
+
+```sh
+docker build -t r1cs-stark .
+```
+
+### run
+
+```sh
+docker run -it -v $PWD:/root r1cs-stark \
+  sh -c 'cd packages/r1cs-stark; CIRCUIT_NAME="compute"; RUST_BACKTRACE=1 cargo run ./tests/${CIRCUIT_NAME}.r1cs ./tests/${CIRCUIT_NAME}.wtns ./tests/${CIRCUIT_NAME}_proof.json > ./tests/log_${CIRCUIT_NAME}.txt'
+```
+
+`CIRCUIT_NAME` allows following values.
+
+- `compute`
+- `bits`
+- `pedersen_test`
+- `poseidon3_test`
+- <s>`sha256_2_test`</s> (Docker process may be killed due to high memory loads)
 
 ## Todo
 
