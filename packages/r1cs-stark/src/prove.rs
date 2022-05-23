@@ -330,7 +330,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
 
   let mut l_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
   l_tree.update(l_evaluations_str);
-  l_tree.gen_proofs(&[]);
+  l_tree.gen_proofs(&[]); // XXX: Do not leave the value of internal node when calculating root node for saving memory
   let l_root = l_tree.get_root().unwrap();
   println!("Computed Merkle root for the linear combination of evaluations");
 
@@ -347,7 +347,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
   .collect::<Vec<usize>>();
   // println!("positions: {:?}", positions);
 
-  let linear_comb_branches = l_tree.gen_proofs(&positions);
+  let linear_comb_branches = l_tree.gen_proofs(&positions); // XXX: When calculating the proofs, the value of the internal node is calculated again.
   println!("Computed Merkle branch for the linear combination of evaluations");
 
   let mut augmented_positions = vec![];
