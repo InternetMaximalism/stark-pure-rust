@@ -8,6 +8,10 @@ First, Install [Rust](https://www.rust-lang.org/tools/install) (cargo version >=
 
 ```sh
 cd packages/r1cs-stark
+rustup override set nightly
+```
+
+```sh
 CIRCUIT_NAME="compute"
 RUST_BACKTRACE=1 cargo run ./tests/${CIRCUIT_NAME}.r1cs ./tests/${CIRCUIT_NAME}.wtns ./tests/${CIRCUIT_NAME}_proof.json
 ```
