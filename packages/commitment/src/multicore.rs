@@ -32,7 +32,7 @@ impl Worker {
 
     pub(crate) fn new_with_cpus(cpus: usize) -> Worker {
         Worker {
-            cpus: cpus,
+            cpus,
             pool: ThreadPool::builder()
                 .pool_size(cpus)
                 .create()
@@ -80,17 +80,19 @@ impl Worker {
     }
 
     pub fn get_chunk_size(&self, elements: usize) -> usize {
-        let chunk_size = if elements <= self.cpus {
+        
+
+        if elements <= self.cpus {
             1
         } else {
             Self::chunk_size_for_num_spawned_threads(elements, self.cpus)
-        };
-
-        chunk_size
+        }
     }
 
     pub fn get_num_spawned_threads(&self, elements: usize) -> usize {
-        let num_spawned = if elements <= self.cpus {
+        
+
+        if elements <= self.cpus {
             elements
         } else {
             let chunk = self.get_chunk_size(elements);
@@ -101,9 +103,7 @@ impl Worker {
             assert!(spawned <= 2 * self.cpus);
 
             spawned
-        };
-
-        num_spawned
+        }
     }
 
     pub fn chunk_size_for_num_spawned_threads(elements: usize, num_threads: usize) -> usize {
@@ -133,13 +133,13 @@ impl<T: Send + 'static, E: Send + 'static> Future for WorkerFuture<T, E> {
         match rec.poll(cx) {
             Poll::Ready(v) => {
                 if let Ok(v) = v {
-                    return Poll::Ready(v);
+                    Poll::Ready(v)
                 } else {
                     panic!("Worker future can not have canceled sender");
                 }
             }
             Poll::Pending => {
-                return Poll::Pending;
+                Poll::Pending
             }
         }
     }
@@ -193,7 +193,7 @@ fn test_trivial_spawning() {
 
     let worker = Worker::new();
     println!("Spawning");
-    let fut = worker.compute(|| long_fn());
+    let fut = worker.compute(long_fn);
     println!("Done spawning");
 
     println!("Will sleep now");

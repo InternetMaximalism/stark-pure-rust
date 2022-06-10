@@ -8,13 +8,13 @@ pub struct R1csContents {
     // pub wire2_label_id_map: Wire2LabelledMap
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Version(pub u32);
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NSection(pub u32);
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SectionType {
     Other,
     HeaderSection,
@@ -22,10 +22,10 @@ pub enum SectionType {
     // Wire2LabelIdMapSection,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SectionSize(u64);
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Header {
     pub field_size: u32,
     pub prime_number: [u8; 32],
@@ -45,13 +45,13 @@ pub struct Constraint {
     pub factors: Vec<Factor>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Factor {
     pub n_coefficient: u32,
     pub coefficients: Vec<Coefficient>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Coefficient {
     pub wire_id: u32,
     pub value: [u8; 32],
@@ -62,7 +62,7 @@ pub struct Coefficient {
 pub struct Wire2LabelledMap(pub Vec<LabelId>);
 */
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LabelId(pub u64);
 
 pub trait VerifyForm {
@@ -84,7 +84,7 @@ impl VerifyForm for R1csContents {
                 break;
             }
         }
-        return is_valid_constraints && /*is_valid_labels &&*/ is_valid_factors;
+        is_valid_constraints && /*is_valid_labels &&*/ is_valid_factors
     }
 }
 

@@ -5,7 +5,7 @@ pub use circom2bellman_core::{
 use num::bigint::BigUint;
 
 pub fn read_witness(bytes: &[u8]) -> Vec<Vec<u8>> {
-    let mut p = &bytes[..];
+    let mut p = bytes;
     let mut witness = vec![];
     let magic = p.get_u32_le();
     assert_eq!(magic, 1936618615); // wtns

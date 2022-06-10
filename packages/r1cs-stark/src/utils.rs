@@ -65,7 +65,7 @@ pub fn r1cs_computational_trace<T: PrimeField>(coefficients: &[T], witness: &[T]
         .iter()
         .cycle()
         .take(3 * n_constraints * witness.len())
-        .map(|&x| x)
+        .copied()
         .collect();
     debug_assert_eq!(computational_trace.len(), 3 * n_constraints * witness.len());
 
@@ -265,9 +265,8 @@ pub fn get_accumulator_tree_root<T: PrimeField + ToBytes, H: Digest>(
     let mut a_tree: MerkleProofInPlace<Vec<u8>, H> = MerkleProofInPlace::new();
     a_tree.update(accumulator_str);
     a_tree.gen_proofs(&[]);
-    let a_root = a_tree.get_root().unwrap();
 
-    a_root
+    a_tree.get_root().unwrap()
 }
 
 pub fn get_random_ff_values<T: PrimeField + FromBytes>(
@@ -306,12 +305,12 @@ pub fn calc_a_mini_evaluations<T: PrimeField>(
     let mut val_dnm_list = vec![];
     for j in 0..steps {
         let last_acc_nmr = if j != 0 {
-            a_nmr_evaluations.last().unwrap().clone()
+            *a_nmr_evaluations.last().unwrap()
         } else {
             T::one()
         };
         let last_acc_dnm = if j != 0 {
-            a_dnm_evaluations.last().unwrap().clone()
+            *a_dnm_evaluations.last().unwrap()
         } else {
             T::one()
         };

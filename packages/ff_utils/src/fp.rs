@@ -69,9 +69,9 @@ fn test_fp_to_bytes() {
 
 impl FromBytes for Fp {
   fn from_bytes_be(value: &[u8]) -> Option<Self> {
-    Self::from_str(&BigUint::from_bytes_be(value.as_ref()).to_str_radix(10))
+    Self::from_str(&BigUint::from_bytes_be(value).to_str_radix(10))
   }
   fn from_bytes_le(value: &[u8]) -> Option<Self> {
-    Self::from_str(&BigUint::from_bytes_le(value.as_ref()).to_str_radix(10))
+    Self::from_str(&BigUint::from_bytes_le(value).to_str_radix(10))
   }
 }

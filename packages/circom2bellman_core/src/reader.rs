@@ -2,7 +2,7 @@ use crate::r1csfile::*;
 use bytes::Buf;
 
 pub fn read_bytes(_bytes: &[u8]) -> R1csContents {
-    let mut p = &_bytes[..];
+    let mut p = _bytes;
     let magic = p.get_u32_le();
     assert_eq!(u32::from_le_bytes(*b"r1cs"), magic);
     let version = Version(p.get_u32_le());
@@ -80,11 +80,11 @@ pub fn read_bytes(_bytes: &[u8]) -> R1csContents {
     // }
     // let wire2_label_id_map = Wire2LabelledMap(label_ids);
 
-    let r1cs = R1csContents {
+    
+    R1csContents {
         version,
         header,
         constraints,
         // wire2_label_id_map
-    };
-    return r1cs;
+    }
 }

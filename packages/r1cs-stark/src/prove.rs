@@ -86,7 +86,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
     println!(
         "Generated expand root of unity: {}.{:03}s",
         end.as_secs(),
-        end.subsec_nanos() / 1_000_000
+        end.subsec_millis()
     );
     let skips = precision / steps; // EXTENSION_FACTOR
     let g1 = xs[skips]; // root of unity x such that x^steps = 1
@@ -103,7 +103,7 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
     println!("Converted coefficients into a polynomial and low-degree extended it");
 
     let f0_polynomial = inv_best_fft(flag0.to_vec(), &g1, log_order_of_g1);
-    let f0_evaluations = best_fft(f0_polynomial.clone(), &g2, log_order_of_g2);
+    let f0_evaluations = best_fft(f0_polynomial, &g2, log_order_of_g2);
     // println!("f0_evaluations: {:?}", f0_evaluations);
 
     let f1_polynomial = inv_best_fft(flag1.to_vec(), &g1, log_order_of_g1);
@@ -213,14 +213,14 @@ pub fn mk_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
     let d3_evaluations: Vec<T> = calc_d3_polynomial(&q3_evaluations, &inv_z_evaluations);
     println!("Computed D3 polynomial");
 
-    let interpolant2 = calc_i2_polynomial(public_first_indices, &xs, &public_wires, skips);
+    let interpolant2 = calc_i2_polynomial(public_first_indices, &xs, public_wires, skips);
     let i2_evaluations: Vec<T> = xs.iter().map(|&x| eval_poly_at(&interpolant2, x)).collect();
 
     let interpolant3 = calc_i3_polynomial(&xs, skips);
     let i3_evaluations: Vec<T> = xs.iter().map(|&x| eval_poly_at(&interpolant3, x)).collect();
     println!("Computed I polynomial");
 
-    let zb2_evaluations = calc_zb2_evaluations(&public_first_indices, &xs, precision, skips);
+    let zb2_evaluations = calc_zb2_evaluations(public_first_indices, &xs, precision, skips);
     let zb3_evaluations = calc_zb3_evaluations(&xs, precision, skips);
     println!("Computed Zb polynomial");
 

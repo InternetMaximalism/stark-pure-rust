@@ -19,7 +19,7 @@ impl ToHex for F7 {
 
   fn encode_hex_upper<T: FromIterator<char>>(&self) -> T {
     let repr = format!("{:?}", self.to_repr());
-    T::from_iter(format!("{}", &repr.to_uppercase()[2..]).chars())
+    T::from_iter((&repr.to_uppercase()[2..]).to_string().chars())
   }
 }
 
@@ -56,9 +56,9 @@ fn test_f7_to_bytes() {
 
 impl FromBytes for F7 {
   fn from_bytes_be(value: &[u8]) -> Option<Self> {
-    Self::from_str(&BigUint::from_bytes_be(value.as_ref()).to_str_radix(10))
+    Self::from_str(&BigUint::from_bytes_be(value).to_str_radix(10))
   }
   fn from_bytes_le(value: &[u8]) -> Option<Self> {
-    Self::from_str(&BigUint::from_bytes_le(value.as_ref()).to_str_radix(10))
+    Self::from_str(&BigUint::from_bytes_le(value).to_str_radix(10))
   }
 }

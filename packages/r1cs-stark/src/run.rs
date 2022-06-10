@@ -156,7 +156,7 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
                 // println!("w: {:?}", w);
                 // println!("c: {:?}", c);
                 // println!("t: {:?}", t);
-                t = t + c * w;
+                t += c * w;
                 wire_using_list[wire_id].push((0, a_coeff_list.len()));
                 a_wit_list.push(w);
                 a_coeff_list.push(c);
@@ -191,7 +191,7 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
                 // println!("w: {:?}", w);
                 // println!("c: {:?}", c);
                 // println!("t: {:?}", t);
-                t = t + c * w;
+                t += c * w;
                 wire_using_list[wire_id].push((1, b_coeff_list.len()));
                 b_wit_list.push(w);
                 b_coeff_list.push(c);
@@ -226,7 +226,7 @@ fn calc_coefficients_and_witness<T: PrimeField + FromBytes>(
                 // println!("w: {:?}", w);
                 // println!("c: {:?}", c);
                 // println!("t: {:?}", t);
-                t = t + c * w;
+                t += c * w;
                 wire_using_list[wire_id].push((2, c_coeff_list.len()));
                 c_wit_list.push(w);
                 c_coeff_list.push(c);
@@ -368,7 +368,7 @@ pub fn prove_with_witness<H: Digest>(
     println!(
         "Generated coefficients: {}.{:03}s",
         end.as_secs(),
-        end.subsec_nanos() / 1_000_000
+        end.subsec_millis()
     );
     // println!("last_coeff_list: {:?}", last_coeff_list);
 
@@ -379,7 +379,7 @@ pub fn prove_with_witness<H: Digest>(
     println!(
         "Generated flags: {}.{:03}s",
         end.as_secs(),
-        end.subsec_nanos() / 1_000_000
+        end.subsec_millis()
     );
 
     let a_trace_len = coefficients.len() / 3;
@@ -389,7 +389,7 @@ pub fn prove_with_witness<H: Digest>(
     let start = std::time::Instant::now();
     let mut permuted_indices = vec![0usize; computational_trace.len()];
     for vs in wire_using_list.iter() {
-        if vs.len() == 0 {
+        if vs.is_empty() {
             continue;
         }
         let mut old_w = a_trace_len * vs.last().unwrap().0 as usize + vs.last().unwrap().1;
@@ -405,14 +405,14 @@ pub fn prove_with_witness<H: Digest>(
     println!(
         "Generated permuted_indices: {}.{:03}s",
         end.as_secs(),
-        end.subsec_nanos() / 1_000_000
+        end.subsec_millis()
     );
 
     println!("public_first_indices");
     let start = std::time::Instant::now();
     let mut public_first_indices = vec![];
     for w in 0..public_wires.len() {
-        if wire_using_list[w].len() > 0 {
+        if !wire_using_list[w].is_empty() {
             let (k, v) = *wire_using_list[w].first().unwrap();
             public_first_indices.push((w, a_trace_len * k as usize + v));
         }
@@ -422,7 +422,7 @@ pub fn prove_with_witness<H: Digest>(
     println!(
         "Generated public_first_indices: {}.{:03}s",
         end.as_secs(),
-        end.subsec_nanos() / 1_000_000
+        end.subsec_millis()
     );
 
     // test_mk_d2_proof(
@@ -491,7 +491,7 @@ fn verify_with_witness<H: Digest>(
     println!("permuted_indices");
     let mut permuted_indices = vec![0usize; coefficients.len()];
     for vs in wire_using_list.iter() {
-        if vs.len() == 0 {
+        if vs.is_empty() {
             continue;
         }
         let mut old_w = a_trace_len * vs.last().unwrap().0 as usize + vs.last().unwrap().1;
@@ -505,7 +505,7 @@ fn verify_with_witness<H: Digest>(
     println!("public_first_indices");
     let mut public_first_indices = vec![];
     for w in 0..public_wires.len() {
-        if wire_using_list[w].len() > 0 {
+        if !wire_using_list[w].is_empty() {
             let (k, v) = *wire_using_list[w].first().unwrap();
             public_first_indices.push((w, a_trace_len * k as usize + v));
         }

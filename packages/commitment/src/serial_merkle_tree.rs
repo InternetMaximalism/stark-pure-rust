@@ -44,11 +44,7 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for SerialMerkleTree<E, H> {
   }
 
   fn get_root(&self) -> Option<H> {
-    if let Some(n) = self.layers.last() {
-      Some(n[0].clone())
-    } else {
-      None
-    }
+    self.layers.last().map(|n| n[0].clone())
   }
 
   fn update<I: IntoIterator<Item = E>>(&mut self, leaves: I) {
@@ -79,10 +75,10 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for SerialMerkleTree<E, H> {
           // println!("node1: {:?}", node_pair[1]);
 
           // the hash of node_pair[0] and node_pair[1]
-          let hash = H::hash(&message);
+          
           // println!("hash: {:?}", hash);
 
-          hash
+          H::hash(&message)
         })
         .collect();
       layers.push(next_layer);

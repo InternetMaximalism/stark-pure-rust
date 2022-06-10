@@ -46,11 +46,7 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for ParallelMerkleTree<E, H> {
   }
 
   fn get_root(&self) -> Option<H> {
-    if let Some(n) = self.layers.last() {
-      Some(n[0].clone())
-    } else {
-      None
-    }
+    self.layers.last().map(|n| n[0].clone())
   }
 
   fn update<I: IntoIterator<Item = E>>(&mut self, leaves: I) {
@@ -109,9 +105,9 @@ impl<E: Element, H: Digest> MerkleTree<E, H> for ParallelMerkleTree<E, H> {
           // println!("node0: {:?}", node_pair[0]);
           // println!("node1: {:?}", node_pair[1]);
 
-          let hash = H::hash(&message);
+          
           // println!("hash: {:?}", hash);
-          hash
+          H::hash(&message)
         })
         .collect();
       layers.push(next_layer);
@@ -216,7 +212,7 @@ fn test_parallel_multi_proof_blake() {
   println!(
     "test_parallel_multi_proof_blake: {}.{:03}s",
     end.as_secs(),
-    end.subsec_nanos() / 1_000_000
+    end.subsec_millis()
   );
 }
 
@@ -253,6 +249,6 @@ fn test_parallel_multi_proof_poseidon() {
   println!(
     "test_parallel_multi_proof_poseidon: {}.{:03}s",
     end.as_secs(),
-    end.subsec_nanos() / 1_000_000
+    end.subsec_millis()
   );
 }

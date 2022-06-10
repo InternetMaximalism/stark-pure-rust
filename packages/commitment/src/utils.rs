@@ -99,11 +99,11 @@ pub fn get_pseudorandom_indices(
   }
 
   let real_modulus = modulus * (exclude_multiples_of - 1) / exclude_multiples_of;
-  return (0..(count * 4))
+  (0..(count * 4))
     .step_by(4)
     .map(|i| u32::from_be_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]) % real_modulus)
     .map(|i| i + 1 + i / (exclude_multiples_of - 1))
-    .collect();
+    .collect()
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn get_power_sequence(x: u64, steps: usize) -> Vec<u64> {
 
 pub fn parse_bytes_to_u64_vec(mut xs: &[u8]) -> Vec<u64> {
   let mut output = vec![];
-  while xs.len() > 0 {
+  while !xs.is_empty() {
     let mut y = 0u64;
     let sub_xs: Vec<u64> = xs
       .iter()

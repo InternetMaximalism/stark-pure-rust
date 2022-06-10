@@ -150,7 +150,7 @@ pub fn verify_r1cs_proof<T: PrimeField + FromBytes + ToBytes, H: Digest>(
     //   lagrange_interp(&x_vals, &y_vals)
     // };
 
-    let interpolant2 = calc_i2_polynomial(public_first_indices, &xs, &public_wires, skips);
+    let interpolant2 = calc_i2_polynomial(public_first_indices, &xs, public_wires, skips);
 
     let x_of_last_step = xs[(steps - 1) * skips];
     let interpolant3 = calc_i3_polynomial(&xs, skips);

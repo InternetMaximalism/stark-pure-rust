@@ -54,7 +54,7 @@ pub fn verify_multi_branch<E: Element, H: Digest>(
     indices
       .iter()
       .zip(proofs)
-      .map(|(index, proof)| proof.validate(&root, *index).expect(""))
+      .map(|(index, proof)| proof.validate(root, *index).expect(""))
       .collect(),
   )
 }
