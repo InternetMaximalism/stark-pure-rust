@@ -48,6 +48,6 @@ impl<'a, T: 'a> Deref for Delayed<'a, T> {
 #[macro_export]
 macro_rules! lazily {
   ($($b:tt)+) => {
-    Delayed::new(move || { $($b)+ });
+    Delayed::new(move || { $($b)+ })
   }
 }

@@ -80,7 +80,6 @@ pub fn read_bytes(_bytes: &[u8]) -> R1csContents {
     // }
     // let wire2_label_id_map = Wire2LabelledMap(label_ids);
 
-    
     R1csContents {
         version,
         header,

@@ -80,8 +80,6 @@ impl Worker {
     }
 
     pub fn get_chunk_size(&self, elements: usize) -> usize {
-        
-
         if elements <= self.cpus {
             1
         } else {
@@ -90,8 +88,6 @@ impl Worker {
     }
 
     pub fn get_num_spawned_threads(&self, elements: usize) -> usize {
-        
-
         if elements <= self.cpus {
             elements
         } else {
@@ -138,9 +134,7 @@ impl<T: Send + 'static, E: Send + 'static> Future for WorkerFuture<T, E> {
                     panic!("Worker future can not have canceled sender");
                 }
             }
-            Poll::Pending => {
-                Poll::Pending
-            }
+            Poll::Pending => Poll::Pending,
         }
     }
 }
